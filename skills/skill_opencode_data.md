@@ -1,28 +1,35 @@
-# OpenCode Data Skill: Agent Reference
+# OpenCode Skill: Agent Reference
 
 ## When To Use
 
-Use this skill when a user asks you to inspect, archive, migrate, compact, or query local OpenCode SQLite data. Typical requests include checking database size, planning an archive of old or batch-like sessions, copying sessions to an archive database, or reading token usage across main and archive databases.
+Use this skill when a user asks you to submit a prompt to OpenCode, run a template-driven batch, group QA work by slug, inspect local OpenCode SQLite data, archive sessions, compact a database, or query token usage across main and archive databases.
 
-Do not use this skill for submitting OpenCode jobs, running batch queues, starting OpenCode servers, or reading private session contents for unrelated purposes.
+This skill does not start or stop OpenCode servers and does not define private prompt policy. Use the user's `.env` or private overlay for endpoint, credential, model, agent, template, and routing defaults.
 
 ## Prerequisites
 
 - Working directory: repository root, alongside `pyproject.toml`
 - Python environment: project `.venv/` created with `uv`
 - Package installed with `uv pip install --python .venv/bin/python -e '.[dev]'`
+- HTTP submission configured through `.env` or explicit CLI flags
 - Local database paths configured through CLI flags or `.env`
 - User has confirmed any operation that mutates a real database
 
-OpenCode databases may contain prompts, messages, tool outputs, project paths, tokens, and other private metadata. Treat database paths and query outputs as sensitive.
+OpenCode prompts, databases, manifests, messages, tool outputs, project paths, tokens, and session IDs can be sensitive. Treat command output and runtime artifacts as private unless the user explicitly says otherwise.
 
 ## Commands
 
 All commands run from the project root.
 
 ```bash
-.venv/bin/python -m opencode_skill stats --json
+.venv/bin/python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model
+.venv/bin/python -m opencode_skill submit "Synthetic prompt" --no-wait
 
+.venv/bin/python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --dry-run
+.venv/bin/python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --smoke-slug sample
+.venv/bin/python -m opencode_skill batch qa --slugs alpha,beta --output-root tmp/batch_runs --group-size 2 --dry-run
+
+.venv/bin/python -m opencode_skill stats --json
 .venv/bin/python -m opencode_skill plan --selector title --prefix batch-
 .venv/bin/python -m opencode_skill plan --selector ids --file session_ids.txt
 .venv/bin/python -m opencode_skill plan --selector time --before 30d
@@ -47,7 +54,15 @@ A convenience wrapper may also be available after installation:
 scripts/opencode-skill stats --json
 ```
 
-## Workflow
+## Submission Workflow
+
+For one-off jobs, prefer `--prompt-file` or `--stdin` over inline prompt text. The default behavior preserves the session for auditability. Use `--delete-session` only when the user explicitly wants an ephemeral session removed after submission or wait completion.
+
+For batch jobs, run `--dry-run` first. Inspect the manifest and rendered prompts under the configured output root. Use `--smoke-slug` for one real submission before submitting a larger set. Batch session titles must start with `batch-`, which keeps later archive selectors auditable.
+
+`batch qa` accepts slugs directly or from a prior manifest. Use `--group-size` to control how much work each QA session receives. Generated manifests and rendered prompts are runtime artifacts and should stay out of git.
+
+## Maintenance Workflow
 
 For any destructive maintenance request, use this sequence:
 
@@ -57,7 +72,7 @@ For any destructive maintenance request, use this sequence:
 4. Show the user the session/message/part counts and selector description.
 5. Run `apply --confirm` only when the selection is explicit and accepted.
 6. Use `--no-delete` first if the user wants a copy-and-verify dry run.
-7. Run tests or a small verification query after the operation.
+7. Use tests or a small verification query after the operation.
 
 If OpenCode may be writing to the source database, stop and ask the user to close or stop the writer before mutation. `stats` and `plan` can run while the database exists, but `apply` and `vacuum-main` should run only under an intentional maintenance window.
 
@@ -69,6 +84,10 @@ By default, CLI selectors expand descendants through the session `parent_id` cha
 
 ## Output Contract
 
+`submit` prints the session ID, status, and deletion state, or a JSON object with the same fields when `--json` is passed.
+
+`batch submit` and `batch qa` write a `batch_manifest.json` and rendered prompt files under the output root. `--dry-run` prints a small JSON summary and avoids network calls.
+
 `stats --json` returns a JSON object with a `databases` list. Each entry reports label, path, existence, size, and table counts when available.
 
 `plan` prints the selector description, resolved session count, message count, part count, and sample titles. Treat sample titles as potentially private. Do not paste them into public logs.
@@ -77,17 +96,19 @@ By default, CLI selectors expand descendants through the session `parent_id` cha
 
 ## Safety Rules
 
-- Never run `apply` from a vague request such as "clean up old stuff" without first producing a `plan`.
-- Never commit `.env`, database files, WAL sidecars, logs, exported sessions, or real operation reports.
+- Never run `apply` from a vague request without first producing a `plan`.
+- Never commit `.env`, database files, WAL sidecars, logs, generated manifests, rendered prompts, exported sessions, or real operation reports.
 - Never print prompt/message body content during a privacy review; report paths and categories instead.
-- Never move job submission or batch runner tooling into this repo unless the user explicitly changes the project boundary.
+- Never copy private endpoints, model names, agent names, templates, session IDs, or local paths into this public repo.
+- Use `--dry-run` and `--smoke-slug` before a large batch submission.
 
 ## Acceptance Criteria
 
-A maintenance task using this skill is complete when:
+A task using this skill is complete when:
 
-1. The user-visible selection was planned before mutation.
-2. The destination database was copied and verified before deletion.
-3. Any destructive step required explicit confirmation.
-4. Tests or an equivalent verification command passed afterward.
-5. No private OpenCode content was written to repository docs or logs.
+1. Submission dry-runs or manifests were inspected before large network side effects.
+2. Destructive database selections were planned before mutation.
+3. Destination database copies were verified before deletion.
+4. Any destructive step required explicit confirmation.
+5. Tests or an equivalent verification command passed afterward.
+6. No private OpenCode content was written to repository docs or logs.

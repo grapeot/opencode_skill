@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sqlite3
 from pathlib import Path
 
@@ -26,7 +25,7 @@ def test_parse_cutoff_iso_date():
     assert ms == expected
 
 
-def test_parse_cutoff_invalid_raises(monkeypatch):
+def test_parse_cutoff_invalid_raises():
     with pytest.raises(SystemExit):
         cli._parse_cutoff_ms("not a date")
 
@@ -73,7 +72,7 @@ def test_plan_with_title_selector(src_db_with_sessions, fresh_dst_db, capsys):
     assert "5" in out
 
 
-def test_apply_requires_confirm(src_db_with_sessions, fresh_dst_db, capsys):
+def test_apply_requires_confirm(src_db_with_sessions, fresh_dst_db):
     rc = cli.main([
         "--main", str(src_db_with_sessions),
         "--archive", str(fresh_dst_db),
@@ -171,3 +170,59 @@ def _write_id_file(tmp: Path, ids: list[str]) -> str:
     p = tmp / "ids.txt"
     p.write_text("\n".join(ids))
     return str(p)
+
+
+def test_cli_batch_dry_run(tmp_path, capsys):
+    specs = tmp_path / "specs"
+    specs.mkdir()
+    (specs / "alpha.md").write_text("# alpha\n", encoding="utf-8")
+    template = tmp_path / "template.md"
+    template.write_text("slug={{SLUG}}", encoding="utf-8")
+
+    rc = cli.main([
+        "--old-archive", "/nonexistent/path.db",
+        "batch",
+        "submit",
+        "--template", str(template),
+        "--specs", str(specs),
+        "--output-root", str(tmp_path / "out"),
+        "--dry-run",
+        "--batch-id", "cli001",
+    ])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["operation"] == "submit"
+
+
+def test_cli_submit_uses_prompt_file_and_preserves_session_by_default(tmp_path, monkeypatch, capsys):
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Synthetic prompt", encoding="utf-8")
+
+    class FakeClient:
+        def create_session(self, _title):
+            return "ses_cli"
+
+        def send_message(self, *_args, **_kwargs):
+            return {"ok": True}
+
+        def wait_for_session_complete(self, *_args, **_kwargs):
+            return True
+
+        def delete_session(self, *_args, **_kwargs):
+            raise AssertionError("delete_session should not be called by default")
+
+    monkeypatch.setattr(cli, "OpenCodeClient", FakeClient)
+
+    rc = cli.main([
+        "submit",
+        "--prompt-file", str(prompt_file),
+        "--title", "Synthetic Job",
+        "--model", "provider/model",
+        "--json",
+    ])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["session_id"] == "ses_cli"
+    assert payload["deleted"] is False

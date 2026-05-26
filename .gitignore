@@ -9,9 +9,16 @@ build/
 .ruff_cache/
 .mypy_cache/
 
+# Runtime output and logs
 tmp/
 logs/
+batch_runs/
+opencode_batches/
 *.log
+**/batch_manifest.json
+**/templates/rendered_*.md
+**/slugs/*.log
+**/groups/*_report.md
 
 # Local SQLite snapshots / fixtures generated during dev
 *.db

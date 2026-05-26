@@ -1,14 +1,23 @@
-# RFC: OpenCode Data Skill
+# RFC: OpenCode Skill
 
 Status: Draft
 
-This document describes the architecture, CLI surface, database assumptions, and safety model. Product behavior and success criteria live in `docs/prd.md`.
+This document describes the architecture, CLI surface, HTTP client, batch renderer, database assumptions, and safety model. Product behavior and success criteria live in `docs/prd.md`.
 
 ## Architecture
 
 ```text
 src/opencode_skill/db.py
   SQLite connection helpers, attach/detach helpers, schema bootstrap copy
+
+src/opencode_skill/client.py
+  Minimal OpenCode HTTP client using Basic auth and environment configuration
+
+src/opencode_skill/jobs.py
+  Single-session submission workflow
+
+src/opencode_skill/batch.py
+  Batch spec discovery, template rendering, QA grouping, manifests, and rate limiting
 
 src/opencode_skill/selector.py
   Session selectors and descendant expansion over session.parent_id
@@ -24,6 +33,71 @@ src/opencode_skill/cli.py
 ```
 
 `scripts/` may contain shell wrappers, but reusable behavior belongs in `src/opencode_skill/`.
+
+## Environment Configuration
+
+The CLI reads `.env` from the repository root when present and otherwise respects the process environment. Public examples use fake values.
+
+Submission configuration:
+
+- `OPENCODE_BASE_URL`: OpenCode HTTP server URL
+- `OPENCODE_USERNAME`: Basic auth username
+- `OPENCODE_PASSWORD`: Basic auth password
+- `OPENCODE_MODEL`: optional default model or provider/model pair
+- `OPENCODE_PROVIDER`: optional default provider
+- `OPENCODE_AGENT`: optional default agent
+- `OPENCODE_MESSAGE_TIMEOUT`: HTTP timeout for sending messages
+
+Database maintenance configuration:
+
+- `OPENCODE_MAIN_DB`
+- `OPENCODE_ARCHIVE_DB`
+- `OPENCODE_OLD_ARCHIVE_DB`
+- `OPENCODE_EMPTY_TEMPLATE_DB`
+
+Credentials, ports, preferred model names, and preferred agent names belong in `.env` or a private workspace overlay, not in committed public docs.
+
+## HTTP Client
+
+The public client talks to the OpenCode server with Basic auth and a small endpoint set. It reads process env plus a CWD `.env` file, accepts explicit constructor overrides for tests, and raises typed exceptions without including credentials in error messages:
+
+- `POST /session` to create a session
+- `POST /session/{id}/message` to send a prompt
+- `GET /session/{id}` to inspect session metadata
+- `GET /session/{id}/message` to inspect messages for smoke verification
+- `DELETE /session/{id}` to delete ephemeral sessions
+- `GET /provider` to help diagnose model/provider mismatches
+
+The client should raise typed exceptions with HTTP status and response body snippets, while never logging credentials.
+
+## Single Job Submission
+
+`submit` accepts prompt text as an argument, from `--prompt-file`, or from `--stdin`. It creates one session, sends one prompt, optionally waits for completion, and deletes or preserves the session according to explicit flags.
+
+Default behavior should be safe for auditability: preserve sessions unless `--delete-session` is passed. A user can choose `--no-wait` for handoff-style jobs or `--wait` for blocking jobs.
+
+Model strings can be passed as `provider/model` or as a model ID with a separate `--provider`. Provider inference is a convenience only; explicit provider wins.
+
+## Batch Submission
+
+`batch submit` renders one prompt per Markdown spec file. It supports:
+
+- `--template` or `--template-dir`
+- `--specs` file or directory
+- `--output-root`
+- `--dry-run`
+- `--smoke-slug`
+- `--slugs`
+- `--var KEY=VALUE`
+- `--rate-limit`
+- `--send-timeout`
+- `--verify`
+
+Every run writes a manifest and rendered prompts. The manifest is the audit source for retries and follow-up verification, and generated artifacts are ignored by git.
+
+`batch qa` renders one prompt per group from `--slugs` or `--slugs-from-manifest`. It supports group size, custom QA templates, output root, dry-run, wait, and the same model/agent configuration as submit.
+
+Batch title patterns should default to a `batch-` prefix so later archive selectors can target batch sessions. The prefix is a public convention, not a private workspace rule.
 
 ## Database Model
 
@@ -74,6 +148,10 @@ The query layer parses message JSON in Python rather than relying on SQLite JSON
 ## CLI Surface
 
 ```bash
+python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model
+python -m opencode_skill submit "Synthetic prompt" --no-wait
+python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --dry-run
+python -m opencode_skill batch qa --slugs alpha,beta --output-root tmp/batch_runs --group-size 2 --dry-run
 python -m opencode_skill stats --json
 python -m opencode_skill plan --selector title --prefix batch-
 python -m opencode_skill plan --selector ids --file session_ids.txt
@@ -108,7 +186,7 @@ For real maintenance, run against a backup or disposable copy first. Stop OpenCo
 
 ## Test Strategy
 
-The offline test suite uses a schema-only fixture database and synthetic rows. It should cover selector behavior, read-only connections, copy/verify/delete migration semantics, idempotency, descendant expansion, and query aggregation across main plus archive databases.
+The offline test suite uses a schema-only fixture database, synthetic rows, fake HTTP sessions, and fake OpenCode clients. It should cover client auth and payloads, single-job preserve/delete behavior, batch rendering, manifests, dry-run network avoidance, send timeouts, selector behavior, read-only connections, copy/verify/delete migration semantics, idempotency, descendant expansion, and query aggregation across main plus archive databases.
 
 Manual validation against a real OpenCode installation is intentionally outside CI and must not write real session content into repository files.
 
