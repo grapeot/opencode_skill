@@ -1,10 +1,8 @@
-# OpenCode Data Skill
+# OpenCode Skill
 
-OpenCode Data Skill is a local CLI and agent skill for inspecting and maintaining OpenCode's SQLite data. It helps AI agents archive selected sessions, keep token analytics complete across multiple local databases, and run safe plan-before-apply maintenance workflows.
+OpenCode Skill is a local-first CLI and agent skill for submitting work to a user-controlled OpenCode HTTP server and maintaining OpenCode's SQLite data afterward. It supports single prompt submission, template-driven batch submission, batch QA grouping, read-only stats, plan-before-apply archiving, and database compaction.
 
-This project is deliberately narrow. It manages local OpenCode data after sessions exist. It does not submit OpenCode jobs, operate batch runners, start or stop OpenCode servers, or manage remote infrastructure.
-
-This repository is designed to be publishable with only fake examples. Runtime data, `.env`, logs, archive databases, and real operational notes must stay outside git.
+This repository is designed to be publishable with only fake examples. Runtime data, `.env`, logs, generated manifests, rendered prompts, archive databases, and real operational notes must stay outside git.
 
 ## Install
 
@@ -20,19 +18,34 @@ uv pip install --python .venv/bin/python -e '.[dev]'
 cp .env.example .env
 ```
 
-Then edit `.env` if your OpenCode database paths differ from the defaults. The example values are placeholders and contain no secrets.
+Then edit `.env` for your local OpenCode server and database paths. The example values are placeholders and contain no secrets.
 
 ## Configure
 
-The default paths follow OpenCode's common local data layout under `~/.local/share/opencode/`. You can override them with CLI flags or environment variables documented in `.env.example`.
+Submission uses `OPENCODE_BASE_URL`, `OPENCODE_USERNAME`, `OPENCODE_PASSWORD`, and optional model/agent variables from `.env` or the process environment. Prefer `--prompt-file` or `--stdin` for private prompts so shell history does not capture sensitive text.
 
-The important safety rule is simple: run `plan` first, inspect the counts, then run `apply --confirm` only when the selected sessions are exactly the ones you intend to archive. Mutation commands should run only when OpenCode is not writing to the source database.
+Database maintenance defaults follow OpenCode's common local data layout under `~/.local/share/opencode/`. You can override them with CLI flags or environment variables documented in `.env.example`.
 
-## For AI Agents
+The maintenance safety rule is simple: run `plan` first, inspect the counts, then run `apply --confirm` only when the selected sessions are exactly the ones you intend to archive. Mutation commands should run only when OpenCode is not writing to the source database.
 
-When a user asks you to inspect, archive, or query OpenCode local data, read `skills/skill_opencode_data.md` first. That file is the agent-facing contract: supported commands, safety boundaries, output expectations, and verification checks.
+## Commands
 
-Useful commands from the project root:
+Single submission:
+
+```bash
+.venv/bin/python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model
+.venv/bin/python -m opencode_skill submit "Summarize this synthetic fixture" --no-wait
+```
+
+Batch submission and QA:
+
+```bash
+.venv/bin/python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --dry-run
+.venv/bin/python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --smoke-slug sample
+.venv/bin/python -m opencode_skill batch qa --slugs alpha,beta,gamma --output-root tmp/batch_runs --group-size 2 --dry-run
+```
+
+SQLite maintenance:
 
 ```bash
 .venv/bin/python -m opencode_skill stats --json
@@ -41,11 +54,23 @@ Useful commands from the project root:
 .venv/bin/python -m opencode_skill vacuum-main --confirm
 ```
 
+A convenience wrapper is also available after installation:
+
+```bash
+scripts/opencode-skill stats --json
+```
+
 Prefer explicit `--main`, `--archive`, and `--dest` paths when working outside the default OpenCode layout. Never infer a destructive selector from vague language; use `plan` output to make the selection auditable.
+
+## For AI Agents
+
+When a user asks you to submit, batch, inspect, archive, or query OpenCode data, read `skills/skill_opencode_data.md` first. That file is the agent-facing contract: supported commands, safety boundaries, output expectations, and verification checks.
+
+Use public mechanics from this repo and private defaults from the user's own `.env` or overlay. Do not copy private prompts, endpoints, model names, agent names, session IDs, manifests, database paths, or logs into public files.
 
 ## For Developers
 
-The reusable code lives in `src/opencode_skill/`. The CLI is a thin argparse layer over the package. Tests use synthetic SQLite fixtures and do not require a real OpenCode database.
+The reusable code lives in `src/opencode_skill/`. The CLI is a thin argparse layer over the package. Tests use fake HTTP sessions, fake clients, and synthetic SQLite fixtures. They do not require network access, a real OpenCode server, or a real OpenCode database.
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -54,7 +79,7 @@ The reusable code lives in `src/opencode_skill/`. The CLI is a thin argparse lay
 The main design documents are:
 
 - `docs/prd.md`: behavior, users, scope, and success criteria
-- `docs/rfc.md`: architecture, CLI surface, database invariants, and safety model
+- `docs/rfc.md`: architecture, CLI surface, HTTP client, batch manifests, database invariants, and safety model
 - `docs/test.md`: unit, integration, and manual validation strategy
 
 ## Local Data
