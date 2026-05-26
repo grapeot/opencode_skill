@@ -1,0 +1,26 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+tmp/
+logs/
+*.log
+
+# Local SQLite snapshots / fixtures generated during dev
+*.db
+*.db-shm
+*.db-wal
+!tests/fixtures/*.db
+
+.env
+.env.*
+!.env.example
+.env.local
+.DS_Store
