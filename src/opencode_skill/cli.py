@@ -9,7 +9,9 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import migrate, query, selector
+from . import batch, migrate, query, selector
+from .client import OpenCodeClient
+from .jobs import read_prompt, submit_job
 
 def _load_dotenv(path: Path) -> None:
     if not path.exists():
@@ -181,6 +183,49 @@ def cmd_vacuum(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_submit(args: argparse.Namespace) -> int:
+    prompt = read_prompt(prompt=args.prompt, prompt_file=args.prompt_file, use_stdin=args.stdin)
+    client = OpenCodeClient()
+    result = submit_job(
+        client,
+        title=args.title,
+        prompt=prompt,
+        model=args.model,
+        provider=args.provider,
+        agent=args.agent,
+        wait=not args.no_wait,
+        delete_session=args.delete_session,
+        send_timeout=args.send_timeout,
+        wait_poll_interval=args.wait_poll_interval,
+        wait_max_seconds=args.wait_max_seconds,
+    )
+    payload = {
+        "session_id": result.session_id,
+        "title": result.title,
+        "status": result.status,
+        "deleted": result.deleted,
+        "wait_completed": result.wait_completed,
+    }
+    if args.json_out:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"session_id: {result.session_id}")
+        print(f"status: {result.status}")
+        print(f"deleted: {str(result.deleted).lower()}")
+    return 0
+
+
+def cmd_batch(args: argparse.Namespace) -> int:
+    try:
+        batch.validate_args(args)
+        return batch.run(args)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        print(f"batch failed: {exc}", file=sys.stderr)
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="opencode-skill")
     p.add_argument("--main", type=Path, default=DEFAULT_MAIN, help="path to main OpenCode DB")
@@ -211,6 +256,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_vac = sub.add_parser("vacuum-main", help="VACUUM main DB (requires server stopped)")
     p_vac.add_argument("--confirm", action="store_true")
     p_vac.set_defaults(func=cmd_vacuum)
+
+    p_submit = sub.add_parser("submit", help="submit one prompt to an OpenCode server")
+    p_submit.add_argument("prompt", nargs="?", help="prompt text; use --prompt-file or --stdin for private prompts")
+    p_submit.add_argument("--prompt-file", type=Path, help="read prompt text from a UTF-8 file")
+    p_submit.add_argument("--stdin", action="store_true", help="read prompt text from standard input")
+    p_submit.add_argument("--title", default=os.environ.get("OPENCODE_TITLE", "OpenCode Job"))
+    p_submit.add_argument("--model", default=os.environ.get("OPENCODE_MODEL", "example/default-model"))
+    p_submit.add_argument("--provider", default=os.environ.get("OPENCODE_PROVIDER"))
+    p_submit.add_argument("--agent", default=os.environ.get("OPENCODE_AGENT"))
+    p_submit.add_argument("--no-wait", action="store_true", help="return after the prompt is accepted")
+    p_submit.add_argument("--delete-session", action="store_true", help="delete the session after submission/wait completes")
+    p_submit.add_argument("--send-timeout", type=float, default=None)
+    p_submit.add_argument("--wait-poll-interval", type=float, default=15.0)
+    p_submit.add_argument("--wait-max-seconds", type=float, default=7200.0)
+    p_submit.add_argument("--json", dest="json_out", action="store_true")
+    p_submit.set_defaults(func=cmd_submit)
+
+    p_batch = sub.add_parser("batch", help="render and submit batch OpenCode jobs")
+    batch.add_arguments(p_batch)
+    p_batch.set_defaults(func=cmd_batch)
 
     return p
 
