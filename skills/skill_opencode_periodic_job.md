@@ -36,7 +36,7 @@ Cron runs with a sparse environment. Do not assume shell startup files, aliases,
 Use an absolute `cd` into the OpenCode Skill repository and invoke the project virtual environment directly:
 
 ```cron
-30 21 * * 4 cd /absolute/path/to/opencode_skill && /absolute/path/to/opencode_skill/.venv/bin/python -m opencode_skill submit --prompt-file /absolute/path/to/prompts/weekly_job.md --title "Weekly OpenCode Job" --no-wait >> /absolute/path/to/logs/weekly_job.log 2>&1
+30 21 * * 4 cd /absolute/path/to/opencode_skill && /absolute/path/to/opencode_skill/.venv/bin/python -m opencode_skill submit --prompt-file /absolute/path/to/prompts/weekly_job.md --title "Weekly OpenCode Job" --no-wait --send-timeout 300 >> /absolute/path/to/logs/weekly_job.log 2>&1
 ```
 
 The CLI loads `.env` from the current working directory, so the `cd` is intentional. Verify `.env` contains the needed `OPENCODE_BASE_URL`, credentials, model, provider, and agent defaults or pass explicit CLI flags. Do not write secrets into crontab.
@@ -56,7 +56,7 @@ When modifying crontab, preserve unrelated entries exactly. Add a short marker c
 
 ```cron
 # opencode-periodic: weekly-report
-30 21 * * 4 cd /absolute/path/to/opencode_skill && /absolute/path/to/opencode_skill/.venv/bin/python -m opencode_skill submit --prompt-file /absolute/path/to/prompts/weekly_report.md --title "Weekly Report" --no-wait >> /absolute/path/to/logs/weekly_report.log 2>&1
+30 21 * * 4 cd /absolute/path/to/opencode_skill && /absolute/path/to/opencode_skill/.venv/bin/python -m opencode_skill submit --prompt-file /absolute/path/to/prompts/weekly_report.md --title "Weekly Report" --no-wait --send-timeout 300 >> /absolute/path/to/logs/weekly_report.log 2>&1
 ```
 
 ## Validation
@@ -77,7 +77,7 @@ For a live test, schedule at least two minutes in the future. One-minute cron te
 
 Use the same command shape as the real job, changing only the schedule, title, log path, and marker. Generate the minute and hour from the local machine's clock, with at least two full minutes of lead time.
 
-The test succeeds when cron writes expected output to the log and the OpenCode submission creates or reports a session. If the log is empty, inspect cron service behavior and the exact crontab entry before changing the prompt. If the log shows Python import errors, re-check the absolute `.venv/bin/python` path and working directory. If the log shows authentication or server errors, fix `.env` or explicit CLI flags and rerun the two-minute test.
+The test succeeds when cron writes expected output to the log and the OpenCode submission creates or reports a session. An empty log can still be a success when the user can see the submitted session in OpenCode; verify in the client or through the server before treating it as a cron failure. If the log shows Python import errors, re-check the absolute `.venv/bin/python` path and working directory. If the log shows authentication or server errors, fix `.env` or explicit CLI flags and rerun the two-minute test.
 
 ## Known Cron Pitfalls
 
@@ -87,6 +87,7 @@ The test succeeds when cron writes expected output to the log and the OpenCode s
 - Shell init files usually do not run. Avoid aliases and version-manager shims.
 - macOS cron may need Full Disk Access or other privacy permissions for paths under protected locations. Put prompts and logs somewhere cron can read and write.
 - The OpenCode Skill CLI loads `.env` from the current working directory. A missing `cd` can silently use placeholder defaults.
+- Long prompts or slow OpenCode HTTP handlers can hit the default send timeout even after the server has created a visible session. Prefer `--send-timeout 300` for scheduled jobs and verify the OpenCode client before assuming a timeout means no submission happened.
 
 ## Output To User
 
