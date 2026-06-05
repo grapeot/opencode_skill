@@ -1,34 +1,26 @@
-# OpenCode Skill: Agent Reference
+# OpenCode Data Skill
 
 ## When To Use
 
-Use this skill when a user asks you to submit a prompt to OpenCode, run a template-driven batch, group QA work by slug, inspect local OpenCode SQLite data, archive sessions, compact a database, or query token usage across main and archive databases.
+Use this skill when a user asks you to inspect local OpenCode SQLite data, archive sessions, compact a database, or query token/session data across main and archive databases.
 
-This skill does not start or stop OpenCode servers and does not define private prompt policy. Use the user's `.env` or private overlay for endpoint, credential, model, agent, template, and routing defaults.
+For submitting OpenCode prompts or batches, use `skill_opencode_submission.md`. For recurring cron jobs that submit OpenCode prompts, use `skill_opencode_periodic_job.md`.
 
 ## Prerequisites
 
 - Working directory: repository root, alongside `pyproject.toml`
 - Python environment: project `.venv/` created with `uv`
 - Package installed with `uv pip install --python .venv/bin/python -e '.[dev]'`
-- HTTP submission configured through `.env` or explicit CLI flags
 - Local database paths configured through CLI flags or `.env`
 - User has confirmed any operation that mutates a real database
 
-OpenCode prompts, databases, manifests, messages, tool outputs, project paths, tokens, and session IDs can be sensitive. Treat command output and runtime artifacts as private unless the user explicitly says otherwise.
+OpenCode databases can contain private prompts, messages, tool outputs, project paths, tokens, and session IDs. Treat command output and runtime artifacts as private unless the user explicitly says otherwise.
 
 ## Commands
 
 All commands run from the project root.
 
 ```bash
-.venv/bin/python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model
-.venv/bin/python -m opencode_skill submit "Synthetic prompt" --no-wait
-
-.venv/bin/python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --dry-run
-.venv/bin/python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --smoke-slug sample
-.venv/bin/python -m opencode_skill batch qa --slugs alpha,beta --output-root tmp/batch_runs --group-size 2 --dry-run
-
 .venv/bin/python -m opencode_skill stats --json
 .venv/bin/python -m opencode_skill plan --selector title --prefix batch-
 .venv/bin/python -m opencode_skill plan --selector ids --file session_ids.txt
@@ -54,14 +46,6 @@ A convenience wrapper may also be available after installation:
 scripts/opencode-skill stats --json
 ```
 
-## Submission Workflow
-
-For one-off jobs, prefer `--prompt-file` or `--stdin` over inline prompt text. The default behavior preserves the session for auditability. Use `--delete-session` only when the user explicitly wants an ephemeral session removed after submission or wait completion.
-
-For batch jobs, run `--dry-run` first. Inspect the manifest and rendered prompts under the configured output root. Use `--smoke-slug` for one real submission before submitting a larger set. Batch session titles must start with `batch-`, which keeps later archive selectors auditable.
-
-`batch qa` accepts slugs directly or from a prior manifest. Use `--group-size` to control how much work each QA session receives. Generated manifests and rendered prompts are runtime artifacts and should stay out of git.
-
 ## Maintenance Workflow
 
 For any destructive maintenance request, use this sequence:
@@ -84,10 +68,6 @@ By default, CLI selectors expand descendants through the session `parent_id` cha
 
 ## Output Contract
 
-`submit` prints the session ID, status, and deletion state, or a JSON object with the same fields when `--json` is passed.
-
-`batch submit` and `batch qa` write a `batch_manifest.json` and rendered prompt files under the output root. `--dry-run` prints a small JSON summary and avoids network calls.
-
 `stats --json` returns a JSON object with a `databases` list. Each entry reports label, path, existence, size, and table counts when available.
 
 `plan` prints the selector description, resolved session count, message count, part count, and sample titles. Treat sample titles as potentially private. Do not paste them into public logs.
@@ -97,18 +77,17 @@ By default, CLI selectors expand descendants through the session `parent_id` cha
 ## Safety Rules
 
 - Never run `apply` from a vague request without first producing a `plan`.
+- Never run `vacuum-main` while OpenCode is writing to the database.
 - Never commit `.env`, database files, WAL sidecars, logs, generated manifests, rendered prompts, exported sessions, or real operation reports.
 - Never print prompt/message body content during a privacy review; report paths and categories instead.
-- Never copy private endpoints, model names, agent names, templates, session IDs, or local paths into this public repo.
-- Use `--dry-run` and `--smoke-slug` before a large batch submission.
+- Never copy private endpoints, model names, agent names, session IDs, local paths, or database contents into this public repo.
 
 ## Acceptance Criteria
 
 A task using this skill is complete when:
 
-1. Submission dry-runs or manifests were inspected before large network side effects.
-2. Destructive database selections were planned before mutation.
-3. Destination database copies were verified before deletion.
-4. Any destructive step required explicit confirmation.
-5. Tests or an equivalent verification command passed afterward.
-6. No private OpenCode content was written to repository docs or logs.
+1. Destructive database selections were planned before mutation.
+2. Destination database copies were verified before deletion.
+3. Any destructive step required explicit confirmation.
+4. Tests or an equivalent verification command passed afterward.
+5. No private OpenCode content was written to repository docs or logs.

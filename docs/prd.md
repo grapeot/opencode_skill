@@ -4,9 +4,9 @@ This document defines the behavior and success criteria for a public, local-firs
 
 ## Background
 
-OpenCode has two common local automation surfaces. The first is the HTTP server used to create sessions and send agent prompts. The second is the SQLite data store that keeps sessions, messages, parts, and project metadata. A useful agent skill should cover both surfaces through one package and one root skill.
+OpenCode has two common local automation surfaces. The first is the HTTP server used to create sessions and send agent prompts. The second is the SQLite data store that keeps sessions, messages, parts, and project metadata. A useful package should cover both surfaces while exposing separate agent skill entry points for submission, data maintenance, and recurring scheduling.
 
-Submission workflows create local sessions. Maintenance workflows inspect, archive, and compact the databases after those sessions exist. Keeping these in one public skill makes the workflow easier for AI agents: submit work, record manifests, later archive or analyze the resulting sessions.
+Submission workflows create local sessions. Maintenance workflows inspect, archive, and compact the databases after those sessions exist. Keeping these in one public package makes the workflow easier for AI agents while preserving clear skill boundaries: submit work, record manifests, later archive or analyze the resulting sessions.
 
 ## Users
 
@@ -17,15 +17,16 @@ The primary users are humans and AI agents who maintain their own local OpenCode
 The tool should let a user or agent:
 
 1. Submit one prompt to an OpenCode server with explicit model, provider, agent, title, wait, and keep/delete behavior.
-2. Submit many rendered prompts from spec files with dry-run, smoke-run, rate limiting, short send timeout, and manifest output.
-3. Submit QA groups from a slug list or prior manifest.
-4. Inspect one or more OpenCode databases without mutation.
-5. Select sessions by explicit criteria such as IDs, title prefix, or age.
-6. Preview an archive operation before applying it.
-7. Copy selected sessions and dependent rows to a destination database.
-8. Verify the copy before deleting anything from the source database.
-9. Query assistant-message token data across the primary database and archives.
-10. Keep export and analytics callers explicit about whether archived sessions are included.
+2. Validate single-prompt submission configuration with a harmless dry run before scheduling or other delayed execution.
+3. Submit many rendered prompts from spec files with dry-run, smoke-run, rate limiting, short send timeout, and manifest output.
+4. Submit QA groups from a slug list or prior manifest.
+5. Inspect one or more OpenCode databases without mutation.
+6. Select sessions by explicit criteria such as IDs, title prefix, or age.
+7. Preview an archive operation before applying it.
+8. Copy selected sessions and dependent rows to a destination database.
+9. Verify the copy before deleting anything from the source database.
+10. Query assistant-message token data across the primary database and archives.
+11. Keep export and analytics callers explicit about whether archived sessions are included.
 
 ## Non-Goals
 
@@ -33,7 +34,9 @@ This project does not start or stop OpenCode servers, define project-specific pr
 
 ## Expected Behavior
 
-`submit` creates one session, sends one prompt from inline text, stdin, or a prompt file, optionally waits for completion, and preserves the session unless `--delete-session` is explicitly passed. Credentials and server URLs come from environment variables or `.env`; no public file contains real credentials.
+`submit` creates one session, sends one prompt from inline text, stdin, or a prompt file, and returns after handoff by default. It preserves the session unless `--delete-session` is explicitly passed. Callers that need blocking behavior can pass `--wait` to wait until OpenCode reports the session is no longer running. Credentials and server URLs come from environment variables or `.env`; no public file contains real credentials.
+
+`submit --dry-run` validates the same server, credential, model, provider, and agent path without sending the user's real prompt. It creates an ephemeral session, sends a fixed OK-only prompt, waits for completion, verifies that the final assistant response is exactly `OK`, and deletes the dry-run session by default. This is the preferred preflight before putting a future `submit` command behind a scheduler.
 
 `batch submit` discovers Markdown spec files, renders a template for each spec, writes rendered prompts and a manifest, and optionally submits them to OpenCode with rate limiting. `--dry-run` must perform all rendering and manifest work without network calls.
 
@@ -53,15 +56,15 @@ Query helpers should make accounting complete by default: analytics callers incl
 
 Any destructive command must require explicit confirmation. A failed copy or verification step must not remove source data. Selectors must be auditable from command arguments and plan output. Real production use should run against a backup or test copy before touching a user's primary OpenCode database.
 
-Submission commands must make side effects visible. Dry runs must avoid network calls. Batch commands must write manifests so a user can audit which prompts were rendered, which sessions were created, and which submissions need follow-up. Network errors should preserve enough detail for debugging without printing credentials. Public defaults must stay synthetic; private endpoint, model, agent, and template policy belongs in `.env` or a private overlay.
+Submission commands must make side effects visible. Batch rendering dry runs must avoid network calls. Single-submit dry runs may call the OpenCode server, but must send only the built-in harmless prompt, wait for `OK`, and delete the test session by default. Batch commands must write manifests so a user can audit which prompts were rendered, which sessions were created, and which submissions need follow-up. Network errors should preserve enough detail for debugging without printing credentials. Public defaults must stay synthetic; private endpoint, model, agent, and template policy belongs in `.env` or a private overlay.
 
 ## Success Criteria
 
 The project is ready for public use when:
 
 1. Offline tests pass using only synthetic fixtures.
-2. The README and root skill explain safe installation, configuration, single submission, batch submission, planning, application, and verification.
+2. The README and public skill files explain safe installation, configuration, single submission, batch submission, planning, application, and verification.
 3. Public docs contain no real session content, private paths, secrets, or personal operational logs.
 4. `.gitignore` blocks runtime data, local configuration, logs, build artifacts, and SQLite sidecars.
 5. The package can be installed with `uv pip install --python .venv/bin/python -e '.[dev]'` and imported without path hacks.
-6. Global workspace skills route OpenCode job submission, batch submission, and data maintenance to the same public root skill or a private overlay that references it.
+6. Global workspace skills route OpenCode job submission, batch submission, recurring scheduling, and data maintenance to the appropriate public skill file or a private overlay that references it.

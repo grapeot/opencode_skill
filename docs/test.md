@@ -8,7 +8,7 @@ Tests must not require a real OpenCode server or inspect a user's real OpenCode 
 
 HTTP client tests cover Basic auth header construction, missing password handling, create-session parsing, send-message payloads, typed HTTP errors, provider/model inference, and wait polling with injected sleep.
 
-Single-job tests cover prompt-source validation, create/send/wait workflow, default session preservation, optional deletion, and explicit provider handling.
+Single-job tests cover prompt-source validation, create/send handoff workflow, explicit wait behavior, default session preservation, optional deletion, handoff timeout status, explicit provider handling, dry-run prompt replacement, OK verification, and failure handling when the assistant response differs from `OK`.
 
 Batch tests cover spec discovery, template rendering with `{{VAR}}` and `${VAR}`, unresolved and bare-token validation, slug filters, smoke slug, template directory selection, the required `batch-` title prefix, QA grouping, QA-from-manifest, manifest structure, rate limiting with injected sleep, and send timeout behavior with fake clients.
 
@@ -20,7 +20,7 @@ Migration tests cover plan counts, copy and verify behavior, project row co-migr
 
 Query tests cover main-only reads, main plus archive reads, explicit archive exclusion, missing archive databases, time windows, and malformed message JSON.
 
-CLI tests cover stats, plan, confirmation requirements, `--no-delete`, an end-to-end copy/verify/delete flow using temporary databases, `submit` with a prompt file, and `batch submit --dry-run`.
+CLI tests cover stats, plan, confirmation requirements, `--no-delete`, an end-to-end copy/verify/delete flow using temporary databases, `submit` with a prompt file, default handoff behavior, `submit --dry-run`, and `batch submit --dry-run`.
 
 ## Local Verification
 
@@ -41,13 +41,14 @@ Manual validation against a real OpenCode installation should happen outside git
 Manual validation should check:
 
 1. `submit --prompt-file` creates a session and preserves it by default.
-2. `batch submit --dry-run` writes rendered prompts and a manifest without network calls.
-3. `batch submit --smoke-slug` creates one expected batch-prefixed session.
-4. `stats` reports the expected configured databases.
-5. `plan` selects the intended session set.
-6. `apply --no-delete` copies and verifies without changing the source.
-7. Full `apply --confirm` deletes only after verification succeeds.
-8. `vacuum-main --confirm` runs only when the user has intentionally stopped writers and has enough free disk space.
+2. `submit --dry-run` sends only the built-in OK prompt, verifies the assistant response, and deletes the dry-run session by default.
+3. `batch submit --dry-run` writes rendered prompts and a manifest without network calls.
+4. `batch submit --smoke-slug` creates one expected batch-prefixed session.
+5. `stats` reports the expected configured databases.
+6. `plan` selects the intended session set.
+7. `apply --no-delete` copies and verifies without changing the source.
+8. Full `apply --confirm` deletes only after verification succeeds.
+9. `vacuum-main --confirm` runs only when the user has intentionally stopped writers and has enough free disk space.
 
 ## Privacy Validation
 

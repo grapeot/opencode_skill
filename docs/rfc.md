@@ -72,11 +72,22 @@ The client should raise typed exceptions with HTTP status and response body snip
 
 ## Single Job Submission
 
-`submit` accepts prompt text as an argument, from `--prompt-file`, or from `--stdin`. It creates one session, sends one prompt, optionally waits for completion, and deletes or preserves the session according to explicit flags.
+`submit` accepts prompt text as an argument, from `--prompt-file`, or from `--stdin`. It creates one session, sends one prompt, returns after handoff by default, and deletes or preserves the session according to explicit flags.
 
-Default behavior should be safe for auditability: preserve sessions unless `--delete-session` is passed. A user can choose `--no-wait` for handoff-style jobs or `--wait` for blocking jobs.
+Default behavior should be safe for automation and auditability: preserve sessions unless `--delete-session` is passed, and do not block on long-running OpenCode work. If the HTTP message request times out during handoff, the command should still return the created session ID with `status=submitted_timeout`; this lets schedulers treat session creation as the durable handoff boundary. A user can choose `--wait` for blocking jobs.
 
 Model strings can be passed as `provider/model` or as a model ID with a separate `--provider`. Provider inference is a convenience only; explicit provider wins.
+
+`submit --dry-run` validates the same HTTP submission path while replacing the user's prompt with a built-in harmless prompt. The flow is:
+
+1. Require exactly one prompt source so the command shape matches a real future submission.
+2. Create a session titled with a `[dry-run]` prefix.
+3. Send the fixed prompt that tells OpenCode to perform no task and reply exactly `OK`.
+4. Wait for session completion regardless of the default handoff behavior.
+5. Read session messages and require the latest assistant text to equal `OK` after whitespace trimming.
+6. Delete the dry-run session by default, unless `--keep-dry-run-session` is passed for debugging.
+
+The dry run intentionally performs a small network side effect because it is a connectivity and agent-routing preflight. It must not send the real prompt or inspect the user's workspace.
 
 ## Batch Submission
 
@@ -149,7 +160,9 @@ The query layer parses message JSON in Python rather than relying on SQLite JSON
 
 ```bash
 python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model
-python -m opencode_skill submit "Synthetic prompt" --no-wait
+python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model --dry-run
+python -m opencode_skill submit "Synthetic prompt"
+python -m opencode_skill submit --prompt-file prompt.md --wait
 python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --dry-run
 python -m opencode_skill batch qa --slugs alpha,beta --output-root tmp/batch_runs --group-size 2 --dry-run
 python -m opencode_skill stats --json

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import batch, migrate, query, selector
 from .client import OpenCodeClient
-from .jobs import read_prompt, submit_job
+from .jobs import DryRunVerificationError, read_prompt, submit_dry_run, submit_job
 
 def _load_dotenv(path: Path) -> None:
     if not path.exists():
@@ -184,34 +184,57 @@ def cmd_vacuum(args: argparse.Namespace) -> int:
 
 
 def cmd_submit(args: argparse.Namespace) -> int:
-    prompt = read_prompt(prompt=args.prompt, prompt_file=args.prompt_file, use_stdin=args.stdin)
+    prompt_text = read_prompt(prompt=args.prompt, prompt_file=args.prompt_file, use_stdin=args.stdin)
     client = OpenCodeClient()
-    result = submit_job(
-        client,
-        title=args.title,
-        prompt=prompt,
-        model=args.model,
-        provider=args.provider,
-        agent=args.agent,
-        wait=not args.no_wait,
-        delete_session=args.delete_session,
-        send_timeout=args.send_timeout,
-        wait_poll_interval=args.wait_poll_interval,
-        wait_max_seconds=args.wait_max_seconds,
-    )
+    try:
+        if args.dry_run:
+            result = submit_dry_run(
+                client,
+                title=args.title,
+                model=args.model,
+                provider=args.provider,
+                agent=args.agent,
+                delete_session=not args.keep_dry_run_session,
+                send_timeout=args.send_timeout,
+                wait_poll_interval=args.wait_poll_interval,
+                wait_max_seconds=args.wait_max_seconds,
+            )
+        else:
+            result = submit_job(
+                client,
+                title=args.title,
+                prompt=prompt_text,
+                model=args.model,
+                provider=args.provider,
+                agent=args.agent,
+                wait=args.wait and not args.no_wait,
+                delete_session=args.delete_session,
+                send_timeout=args.send_timeout if args.send_timeout is not None else (None if args.wait else 5.0),
+                wait_poll_interval=args.wait_poll_interval,
+                wait_max_seconds=args.wait_max_seconds,
+            )
+    except DryRunVerificationError as exc:
+        print(f"dry run failed: {exc}", file=sys.stderr)
+        return 2
     payload = {
         "session_id": result.session_id,
         "title": result.title,
         "status": result.status,
         "deleted": result.deleted,
         "wait_completed": result.wait_completed,
+        "dry_run": result.dry_run,
     }
+    if result.verification:
+        payload["verification"] = result.verification
     if args.json_out:
         print(json.dumps(payload, indent=2))
     else:
         print(f"session_id: {result.session_id}")
         print(f"status: {result.status}")
         print(f"deleted: {str(result.deleted).lower()}")
+        if result.dry_run:
+            print(f"dry_run: true")
+            print(f"verification: {result.verification}")
     return 0
 
 
@@ -265,7 +288,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_submit.add_argument("--model", default=os.environ.get("OPENCODE_MODEL", "example/default-model"))
     p_submit.add_argument("--provider", default=os.environ.get("OPENCODE_PROVIDER"))
     p_submit.add_argument("--agent", default=os.environ.get("OPENCODE_AGENT"))
-    p_submit.add_argument("--no-wait", action="store_true", help="return after the prompt is accepted")
+    p_submit.add_argument("--dry-run", action="store_true", help="submit a harmless OK-only prompt instead of the provided prompt")
+    p_submit.add_argument(
+        "--keep-dry-run-session",
+        action="store_true",
+        help="preserve the ephemeral dry-run session instead of deleting it after verification",
+    )
+    p_submit.add_argument("--wait", action="store_true", help="block until the OpenCode session is no longer running")
+    p_submit.add_argument("--no-wait", action="store_true", help="deprecated compatibility flag; submit already returns after handoff by default")
     p_submit.add_argument("--delete-session", action="store_true", help="delete the session after submission/wait completes")
     p_submit.add_argument("--send-timeout", type=float, default=None)
     p_submit.add_argument("--wait-poll-interval", type=float, default=15.0)

@@ -2,7 +2,9 @@
 
 ## When To Use
 
-Use this skill when a user asks to schedule a recurring or delayed OpenCode job, automate an OpenCode prompt on a daily/weekly/monthly cadence, test a cron-triggered OpenCode submission, or maintain a prompt file that cron submits through the OpenCode Skill CLI.
+Use this skill when a user asks to schedule a recurring OpenCode job, automate an OpenCode prompt on a daily/weekly/monthly cadence, test a cron-triggered OpenCode submission, or maintain a prompt file that cron submits through the OpenCode Skill CLI.
+
+For one-shot delayed OpenCode jobs, prefer `process_launcher.md` durable scheduled jobs instead of cron. Still use this skill for recurring cron cadence.
 
 This skill supports macOS and Linux only. It relies on user crontab and does not cover Windows Task Scheduler, systemd timers, launchd plists, Kubernetes cron jobs, or hosted schedulers.
 
@@ -36,7 +38,7 @@ Cron runs with a sparse environment. Do not assume shell startup files, aliases,
 Use an absolute `cd` into the OpenCode Skill repository and invoke the project virtual environment directly:
 
 ```cron
-30 21 * * 4 cd /absolute/path/to/opencode_skill && /absolute/path/to/opencode_skill/.venv/bin/python -m opencode_skill submit --prompt-file /absolute/path/to/prompts/weekly_job.md --title "Weekly OpenCode Job" --no-wait --send-timeout 300 >> /absolute/path/to/logs/weekly_job.log 2>&1
+30 21 * * 4 cd /absolute/path/to/opencode_skill && /absolute/path/to/opencode_skill/.venv/bin/python -m opencode_skill submit --prompt-file /absolute/path/to/prompts/weekly_job.md --title "Weekly OpenCode Job" --send-timeout 5 >> /absolute/path/to/logs/weekly_job.log 2>&1
 ```
 
 The CLI loads `.env` from the current working directory, so the `cd` is intentional. Verify `.env` contains the needed `OPENCODE_BASE_URL`, credentials, model, provider, and agent defaults or pass explicit CLI flags. Do not write secrets into crontab.
@@ -56,14 +58,14 @@ When modifying crontab, preserve unrelated entries exactly. Add a short marker c
 
 ```cron
 # opencode-periodic: weekly-report
-30 21 * * 4 cd /absolute/path/to/opencode_skill && /absolute/path/to/opencode_skill/.venv/bin/python -m opencode_skill submit --prompt-file /absolute/path/to/prompts/weekly_report.md --title "Weekly Report" --no-wait --send-timeout 300 >> /absolute/path/to/logs/weekly_report.log 2>&1
+30 21 * * 4 cd /absolute/path/to/opencode_skill && /absolute/path/to/opencode_skill/.venv/bin/python -m opencode_skill submit --prompt-file /absolute/path/to/prompts/weekly_report.md --title "Weekly Report" --send-timeout 5 >> /absolute/path/to/logs/weekly_report.log 2>&1
 ```
 
 ## Validation
 
 A scheduled job is ready only when all of these are true:
 
-1. The prompt file exists, is readable, and has been tested manually through `submit --prompt-file` or a dry manual equivalent.
+1. The prompt file exists, is readable, and `submit --dry-run --prompt-file <file>` succeeds with `assistant_replied_ok`.
 2. The repository `.venv/bin/python` exists and can import `opencode_skill` from the same directory cron will `cd` into.
 3. The `.env` or explicit flags provide working OpenCode submission configuration.
 4. The current crontab has been backed up before modification.
@@ -71,13 +73,19 @@ A scheduled job is ready only when all of these are true:
 6. A two-minute temporary cron test has fired successfully, or the user explicitly chose to skip live testing.
 7. Any temporary test entry has been removed after the test, with another crontab backup taken before cleanup.
 
-For a live test, schedule at least two minutes in the future. One-minute cron tests are flaky because the edit may land too close to the next minute boundary. Tell the user what will happen, install a temporary entry with a unique marker, wait long enough for cron to fire, then check the log and OpenCode session list or submission output. Remove only the temporary marker entry afterward.
+For a live test, first run the OpenCode CLI dry run:
+
+```bash
+cd /absolute/path/to/opencode_skill && /absolute/path/to/opencode_skill/.venv/bin/python -m opencode_skill submit --prompt-file /absolute/path/to/prompts/weekly_job.md --title "Weekly OpenCode Job" --dry-run --json
+```
+
+Then schedule at least two minutes in the future. One-minute cron tests are flaky because the edit may land too close to the next minute boundary. Tell the user what will happen, install a temporary entry with a unique marker, wait long enough for cron to fire, then check the log and OpenCode session list or submission output. Remove only the temporary marker entry afterward.
 
 ## Two-Minute Test Pattern
 
 Use the same command shape as the real job, changing only the schedule, title, log path, and marker. Generate the minute and hour from the local machine's clock, with at least two full minutes of lead time.
 
-The test succeeds when cron writes expected output to the log and the OpenCode submission creates or reports a session. An empty log can still be a success when the user can see the submitted session in OpenCode; verify in the client or through the server before treating it as a cron failure. If the log shows Python import errors, re-check the absolute `.venv/bin/python` path and working directory. If the log shows authentication or server errors, fix `.env` or explicit CLI flags and rerun the two-minute test.
+The test succeeds when cron writes expected output to the log and the OpenCode submission creates or reports a session. `status=submitted_timeout` can still be a successful handoff because OpenCode may keep processing after the HTTP message request times out; verify the session ID or title in the client/server before treating it as a cron failure. If the log shows Python import errors, re-check the absolute `.venv/bin/python` path and working directory. If the log shows authentication or server errors, fix `.env` or explicit CLI flags and rerun the two-minute test.
 
 ## Known Cron Pitfalls
 

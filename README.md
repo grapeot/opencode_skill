@@ -6,7 +6,7 @@ This repository is designed to be publishable with only fake examples. Runtime d
 
 ## Install
 
-Hand this repository URL to an AI coding agent and ask it to install the skill in your workspace. The agent should start from your workspace `AGENTS.md`, `CLAUDE.md`, or equivalent instructions, then add the public root skill at `skills/skill_opencode_data.md` to your skill discovery chain.
+Hand this repository URL to an AI coding agent and ask it to install the skill in your workspace. The agent should start from your workspace `AGENTS.md`, `CLAUDE.md`, or equivalent instructions, then add the relevant public skill files to your skill discovery chain: `skills/skill_opencode_submission.md` for prompt submission and batch work, `skills/skill_opencode_data.md` for SQLite data maintenance, and `skills/skill_opencode_periodic_job.md` for recurring cron jobs.
 
 For a direct local install:
 
@@ -34,8 +34,14 @@ Single submission:
 
 ```bash
 .venv/bin/python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model
-.venv/bin/python -m opencode_skill submit "Summarize this synthetic fixture" --no-wait
+.venv/bin/python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model --dry-run
+.venv/bin/python -m opencode_skill submit "Summarize this synthetic fixture"
+.venv/bin/python -m opencode_skill submit --prompt-file prompt.md --wait
 ```
+
+Use `submit --dry-run` before putting a future submission behind a scheduler. It validates the server, credentials, model, provider, and agent path by sending a built-in harmless prompt that must return exactly `OK`; it does not send the prompt file content and deletes the dry-run session by default.
+
+Real `submit` returns after handoff by default and preserves the session for auditability. Use `--wait` only when the caller intentionally wants to block until OpenCode reports the session is no longer running.
 
 Batch submission and QA:
 
@@ -64,7 +70,7 @@ Prefer explicit `--main`, `--archive`, and `--dest` paths when working outside t
 
 ## For AI Agents
 
-When a user asks you to submit, batch, inspect, archive, or query OpenCode data, read `skills/skill_opencode_data.md` first. That file is the agent-facing contract: supported commands, safety boundaries, output expectations, and verification checks.
+When a user asks you to submit or batch OpenCode work, read `skills/skill_opencode_submission.md` first. When a user asks you to inspect, archive, compact, or query local OpenCode SQLite data, read `skills/skill_opencode_data.md` first. For recurring cron submission workflows, read `skills/skill_opencode_periodic_job.md`.
 
 Use public mechanics from this repo and private defaults from the user's own `.env` or overlay. Do not copy private prompts, endpoints, model names, agent names, session IDs, manifests, database paths, or logs into public files.
 
@@ -81,6 +87,9 @@ The main design documents are:
 - `docs/prd.md`: behavior, users, scope, and success criteria
 - `docs/rfc.md`: architecture, CLI surface, HTTP client, batch manifests, database invariants, and safety model
 - `docs/test.md`: unit, integration, and manual validation strategy
+- `skills/skill_opencode_submission.md`: prompt and batch submission contract
+- `skills/skill_opencode_data.md`: local SQLite maintenance contract
+- `skills/skill_opencode_periodic_job.md`: recurring cron submission workflow
 
 ## Local Data
 

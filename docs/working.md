@@ -11,10 +11,16 @@ This public working log records project-level changes and validation results wit
 - Added single-job submission helpers that preserve sessions by default and support prompt text, prompt files, and stdin through the CLI.
 - Added batch rendering and submission helpers with spec discovery, slug filtering, smoke slug, variable injection, rate limiting, send timeout, verification hooks, QA grouping, and manifest output.
 - Kept existing `stats`, `plan`, `apply`, and `vacuum-main` behavior stable while adding `submit` and `batch` CLI commands.
-- Updated public docs, env example, root skill, and ignore rules for generated batch artifacts.
+- Updated public docs, env example, skill entry points, and ignore rules for generated batch artifacts.
 - Reworked the repository scaffold for public GitHub publication.
 - Replaced workspace-specific README, AGENTS, PRD, RFC, and test strategy content with public-safe documentation.
-- Added `pyproject.toml`, `.env.example`, `LICENSE`, a root skill file, a wrapper script, and type-checker configuration.
+- Added `pyproject.toml`, `.env.example`, `LICENSE`, public skill files, a wrapper script, and type-checker configuration.
+
+## 2026-06-05
+
+- Split the public agent-facing skill surface into `skill_opencode_submission.md`, `skill_opencode_data.md`, and `skill_opencode_periodic_job.md` so submission, SQLite maintenance, and recurring scheduling have separate contracts.
+- Changed single `submit` to return after handoff by default; callers use `--wait` only when they intentionally want blocking behavior.
+- Added `submit --dry-run` as the scheduler preflight for single OpenCode jobs.
 - Expanded `.gitignore` to block local configuration, build artifacts, caches, logs, SQLite data files, SQLite sidecars, generated manifests, rendered prompts, and batch output directories.
 - Added environment-variable path configuration for the CLI and query defaults.
 - Fixed `apply --no-expand` so deletion uses resolved session IDs rather than raw selector parameters.

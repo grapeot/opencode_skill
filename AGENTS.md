@@ -36,7 +36,7 @@ Mutation workflows must preserve the safety model:
 
 This repository is intended to be public. Keep examples synthetic and generic. Do not add real OpenCode session IDs, prompt/message dumps, personal filesystem paths, backup paths, token totals, operational logs, API keys, passwords, private endpoints, private model names, private agent names, or private server commands.
 
-The public root skill is `skills/skill_opencode_data.md`. If a private workspace needs additional defaults or routing, keep that overlay in the private workspace's own skill/config directory rather than in this repo.
+The public skill entry points are split by responsibility: `skills/skill_opencode_submission.md` for prompt/batch submission, `skills/skill_opencode_data.md` for SQLite data maintenance, and `skills/skill_opencode_periodic_job.md` for recurring cron submission. If a private workspace needs additional defaults or routing, keep that overlay in the private workspace's own skill/config directory rather than in this repo.
 
 ## Testing and Docs
 
