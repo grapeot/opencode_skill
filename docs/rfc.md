@@ -78,6 +78,17 @@ Default behavior should be safe for auditability: preserve sessions unless `--de
 
 Model strings can be passed as `provider/model` or as a model ID with a separate `--provider`. Provider inference is a convenience only; explicit provider wins.
 
+`submit --dry-run` validates the same HTTP submission path while replacing the user's prompt with a built-in harmless prompt. The flow is:
+
+1. Require exactly one prompt source so the command shape matches a real future submission.
+2. Create a session titled with a `[dry-run]` prefix.
+3. Send the fixed prompt that tells OpenCode to perform no task and reply exactly `OK`.
+4. Wait for session completion regardless of `--no-wait`.
+5. Read session messages and require the latest assistant text to equal `OK` after whitespace trimming.
+6. Delete the dry-run session by default, unless `--keep-dry-run-session` is passed for debugging.
+
+The dry run intentionally performs a small network side effect because it is a connectivity and agent-routing preflight. It must not send the real prompt or inspect the user's workspace.
+
 ## Batch Submission
 
 `batch submit` renders one prompt per Markdown spec file. It supports:
@@ -149,6 +160,7 @@ The query layer parses message JSON in Python rather than relying on SQLite JSON
 
 ```bash
 python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model
+python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model --dry-run
 python -m opencode_skill submit "Synthetic prompt" --no-wait
 python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --dry-run
 python -m opencode_skill batch qa --slugs alpha,beta --output-root tmp/batch_runs --group-size 2 --dry-run

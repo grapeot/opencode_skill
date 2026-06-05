@@ -23,6 +23,7 @@ All commands run from the project root.
 
 ```bash
 .venv/bin/python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model
+.venv/bin/python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model --dry-run
 .venv/bin/python -m opencode_skill submit "Synthetic prompt" --no-wait
 
 .venv/bin/python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --dry-run
@@ -56,7 +57,7 @@ scripts/opencode-skill stats --json
 
 ## Submission Workflow
 
-For one-off jobs, prefer `--prompt-file` or `--stdin` over inline prompt text. The default behavior preserves the session for auditability. Use `--delete-session` only when the user explicitly wants an ephemeral session removed after submission or wait completion.
+For one-off jobs, prefer `--prompt-file` or `--stdin` over inline prompt text. Run `submit --dry-run` before scheduling or otherwise delaying a real submission; it sends only a built-in OK prompt, verifies the assistant response, and deletes the dry-run session by default. The default real-submit behavior preserves the session for auditability. Use `--delete-session` only when the user explicitly wants an ephemeral session removed after submission or wait completion.
 
 For batch jobs, run `--dry-run` first. Inspect the manifest and rendered prompts under the configured output root. Use `--smoke-slug` for one real submission before submitting a larger set. Batch session titles must start with `batch-`, which keeps later archive selectors auditable.
 
@@ -84,7 +85,7 @@ By default, CLI selectors expand descendants through the session `parent_id` cha
 
 ## Output Contract
 
-`submit` prints the session ID, status, and deletion state, or a JSON object with the same fields when `--json` is passed.
+`submit` prints the session ID, status, deletion state, and dry-run state, or a JSON object with the same fields when `--json` is passed. For `submit --dry-run`, success means the assistant response was exactly `OK`.
 
 `batch submit` and `batch qa` write a `batch_manifest.json` and rendered prompt files under the output root. `--dry-run` prints a small JSON summary and avoids network calls.
 
@@ -100,6 +101,7 @@ By default, CLI selectors expand descendants through the session `parent_id` cha
 - Never commit `.env`, database files, WAL sidecars, logs, generated manifests, rendered prompts, exported sessions, or real operation reports.
 - Never print prompt/message body content during a privacy review; report paths and categories instead.
 - Never copy private endpoints, model names, agent names, templates, session IDs, or local paths into this public repo.
+- Use `submit --dry-run` before scheduling a single future OpenCode submission.
 - Use `--dry-run` and `--smoke-slug` before a large batch submission.
 
 ## Acceptance Criteria

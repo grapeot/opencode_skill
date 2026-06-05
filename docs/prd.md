@@ -17,15 +17,16 @@ The primary users are humans and AI agents who maintain their own local OpenCode
 The tool should let a user or agent:
 
 1. Submit one prompt to an OpenCode server with explicit model, provider, agent, title, wait, and keep/delete behavior.
-2. Submit many rendered prompts from spec files with dry-run, smoke-run, rate limiting, short send timeout, and manifest output.
-3. Submit QA groups from a slug list or prior manifest.
-4. Inspect one or more OpenCode databases without mutation.
-5. Select sessions by explicit criteria such as IDs, title prefix, or age.
-6. Preview an archive operation before applying it.
-7. Copy selected sessions and dependent rows to a destination database.
-8. Verify the copy before deleting anything from the source database.
-9. Query assistant-message token data across the primary database and archives.
-10. Keep export and analytics callers explicit about whether archived sessions are included.
+2. Validate single-prompt submission configuration with a harmless dry run before scheduling or other delayed execution.
+3. Submit many rendered prompts from spec files with dry-run, smoke-run, rate limiting, short send timeout, and manifest output.
+4. Submit QA groups from a slug list or prior manifest.
+5. Inspect one or more OpenCode databases without mutation.
+6. Select sessions by explicit criteria such as IDs, title prefix, or age.
+7. Preview an archive operation before applying it.
+8. Copy selected sessions and dependent rows to a destination database.
+9. Verify the copy before deleting anything from the source database.
+10. Query assistant-message token data across the primary database and archives.
+11. Keep export and analytics callers explicit about whether archived sessions are included.
 
 ## Non-Goals
 
@@ -34,6 +35,8 @@ This project does not start or stop OpenCode servers, define project-specific pr
 ## Expected Behavior
 
 `submit` creates one session, sends one prompt from inline text, stdin, or a prompt file, optionally waits for completion, and preserves the session unless `--delete-session` is explicitly passed. Credentials and server URLs come from environment variables or `.env`; no public file contains real credentials.
+
+`submit --dry-run` validates the same server, credential, model, provider, and agent path without sending the user's real prompt. It creates an ephemeral session, sends a fixed OK-only prompt, waits for completion, verifies that the final assistant response is exactly `OK`, and deletes the dry-run session by default. This is the preferred preflight before putting a future `submit --no-wait` command behind a scheduler.
 
 `batch submit` discovers Markdown spec files, renders a template for each spec, writes rendered prompts and a manifest, and optionally submits them to OpenCode with rate limiting. `--dry-run` must perform all rendering and manifest work without network calls.
 
@@ -53,7 +56,7 @@ Query helpers should make accounting complete by default: analytics callers incl
 
 Any destructive command must require explicit confirmation. A failed copy or verification step must not remove source data. Selectors must be auditable from command arguments and plan output. Real production use should run against a backup or test copy before touching a user's primary OpenCode database.
 
-Submission commands must make side effects visible. Dry runs must avoid network calls. Batch commands must write manifests so a user can audit which prompts were rendered, which sessions were created, and which submissions need follow-up. Network errors should preserve enough detail for debugging without printing credentials. Public defaults must stay synthetic; private endpoint, model, agent, and template policy belongs in `.env` or a private overlay.
+Submission commands must make side effects visible. Batch rendering dry runs must avoid network calls. Single-submit dry runs may call the OpenCode server, but must send only the built-in harmless prompt, wait for `OK`, and delete the test session by default. Batch commands must write manifests so a user can audit which prompts were rendered, which sessions were created, and which submissions need follow-up. Network errors should preserve enough detail for debugging without printing credentials. Public defaults must stay synthetic; private endpoint, model, agent, and template policy belongs in `.env` or a private overlay.
 
 ## Success Criteria
 

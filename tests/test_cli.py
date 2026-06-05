@@ -226,3 +226,83 @@ def test_cli_submit_uses_prompt_file_and_preserves_session_by_default(tmp_path, 
     payload = json.loads(capsys.readouterr().out)
     assert payload["session_id"] == "ses_cli"
     assert payload["deleted"] is False
+
+
+def test_cli_submit_dry_run_ignores_real_prompt_and_verifies_ok(tmp_path, monkeypatch, capsys):
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Real task should not be sent", encoding="utf-8")
+
+    class FakeClient:
+        def __init__(self):
+            self.sent_messages = []
+
+        def create_session(self, title):
+            assert title == "[dry-run] Synthetic Job"
+            return "ses_dry"
+
+        def send_message(self, session_id, message, **_kwargs):
+            assert session_id == "ses_dry"
+            self.sent_messages.append(message)
+            assert "Real task should not be sent" not in message
+            return {"ok": True}
+
+        def wait_for_session_complete(self, *_args, **_kwargs):
+            return True
+
+        def get_session_messages(self, *_args, **_kwargs):
+            return [{"info": {"role": "assistant"}, "parts": [{"text": "OK"}]}]
+
+        def delete_session(self, *_args, **_kwargs):
+            return True
+
+    monkeypatch.setattr(cli, "OpenCodeClient", FakeClient)
+
+    rc = cli.main([
+        "submit",
+        "--prompt-file", str(prompt_file),
+        "--title", "Synthetic Job",
+        "--model", "provider/model",
+        "--dry-run",
+        "--json",
+    ])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["session_id"] == "ses_dry"
+    assert payload["status"] == "dry_run_ok_deleted"
+    assert payload["dry_run"] is True
+    assert payload["verification"] == "assistant_replied_ok"
+
+
+def test_cli_submit_dry_run_returns_2_on_verification_failure(tmp_path, monkeypatch, capsys):
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Real task should not be sent", encoding="utf-8")
+
+    class FakeClient:
+        def create_session(self, _title):
+            return "ses_dry"
+
+        def send_message(self, *_args, **_kwargs):
+            return {"ok": True}
+
+        def wait_for_session_complete(self, *_args, **_kwargs):
+            return True
+
+        def get_session_messages(self, *_args, **_kwargs):
+            return [{"info": {"role": "assistant"}, "parts": [{"text": "NO"}]}]
+
+        def delete_session(self, *_args, **_kwargs):
+            return True
+
+    monkeypatch.setattr(cli, "OpenCodeClient", FakeClient)
+
+    rc = cli.main([
+        "submit",
+        "--prompt-file", str(prompt_file),
+        "--title", "Synthetic Job",
+        "--model", "provider/model",
+        "--dry-run",
+    ])
+
+    assert rc == 2
+    assert "dry run failed" in capsys.readouterr().err

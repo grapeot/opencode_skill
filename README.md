@@ -34,8 +34,11 @@ Single submission:
 
 ```bash
 .venv/bin/python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model
+.venv/bin/python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model --dry-run
 .venv/bin/python -m opencode_skill submit "Summarize this synthetic fixture" --no-wait
 ```
+
+Use `submit --dry-run` before putting a future submission behind a scheduler. It validates the server, credentials, model, provider, and agent path by sending a built-in harmless prompt that must return exactly `OK`; it does not send the prompt file content and deletes the dry-run session by default.
 
 Batch submission and QA:
 
