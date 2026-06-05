@@ -225,6 +225,7 @@ def test_cli_submit_uses_prompt_file_and_preserves_session_by_default(tmp_path, 
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["session_id"] == "ses_cli"
+    assert payload["status"] == "submitted"
     assert payload["deleted"] is False
 
 

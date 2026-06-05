@@ -207,9 +207,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
                 model=args.model,
                 provider=args.provider,
                 agent=args.agent,
-                wait=not args.no_wait,
+                wait=args.wait and not args.no_wait,
                 delete_session=args.delete_session,
-                send_timeout=args.send_timeout,
+                send_timeout=args.send_timeout if args.send_timeout is not None else (None if args.wait else 5.0),
                 wait_poll_interval=args.wait_poll_interval,
                 wait_max_seconds=args.wait_max_seconds,
             )
@@ -294,7 +294,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="preserve the ephemeral dry-run session instead of deleting it after verification",
     )
-    p_submit.add_argument("--no-wait", action="store_true", help="return after the prompt is accepted")
+    p_submit.add_argument("--wait", action="store_true", help="block until the OpenCode session is no longer running")
+    p_submit.add_argument("--no-wait", action="store_true", help="deprecated compatibility flag; submit already returns after handoff by default")
     p_submit.add_argument("--delete-session", action="store_true", help="delete the session after submission/wait completes")
     p_submit.add_argument("--send-timeout", type=float, default=None)
     p_submit.add_argument("--wait-poll-interval", type=float, default=15.0)

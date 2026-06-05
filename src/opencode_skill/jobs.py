@@ -60,7 +60,7 @@ def submit_job(
     model: str,
     provider: str | None = None,
     agent: str | None = None,
-    wait: bool = True,
+    wait: bool = False,
     delete_session: bool = False,
     send_timeout: float | None = None,
     wait_poll_interval: float = 15.0,
@@ -68,23 +68,32 @@ def submit_job(
 ) -> JobSubmissionResult:
     provider_id, model_id = infer_provider(model, provider)
     session_id = client.create_session(title)
-    client.send_message(
-        session_id,
-        prompt,
-        model_id=model_id,
-        provider_id=provider_id,
-        agent=agent,
-        timeout=send_timeout,
-    )
     wait_completed = None
-    status = "submitted"
     if wait:
+        client.send_message(
+            session_id,
+            prompt,
+            model_id=model_id,
+            provider_id=provider_id,
+            agent=agent,
+            timeout=send_timeout,
+        )
         wait_completed = client.wait_for_session_complete(
             session_id,
             poll_interval=wait_poll_interval,
             max_wait=wait_max_seconds,
         )
         status = "completed" if wait_completed else "wait_timeout"
+    else:
+        status = _send_message_for_handoff(
+            client,
+            session_id=session_id,
+            prompt=prompt,
+            model_id=model_id,
+            provider_id=provider_id,
+            agent=agent,
+            send_timeout=send_timeout,
+        )
     deleted = False
     if delete_session:
         deleted = client.delete_session(session_id)
@@ -97,6 +106,44 @@ def submit_job(
         deleted=deleted,
         wait_completed=wait_completed,
     )
+
+
+def _send_message_for_handoff(
+    client: Any,
+    *,
+    session_id: str,
+    prompt: str,
+    model_id: str,
+    provider_id: str | None,
+    agent: str | None,
+    send_timeout: float | None,
+) -> str:
+    result_queue: queue.Queue[tuple[str, Any]] = queue.Queue(maxsize=1)
+
+    def send() -> None:
+        try:
+            result = client.send_message(
+                session_id,
+                prompt,
+                model_id=model_id,
+                provider_id=provider_id,
+                agent=agent,
+                timeout=send_timeout,
+            )
+            result_queue.put(("result", result))
+        except Exception as exc:  # noqa: BLE001 - handoff status preserves the session id for follow-up
+            result_queue.put(("error", exc))
+
+    thread = threading.Thread(target=send, daemon=True)
+    thread.start()
+    thread.join(None if send_timeout is None or send_timeout <= 0 else send_timeout)
+
+    if thread.is_alive():
+        return "submitted_timeout"
+    kind, result = result_queue.get() if not result_queue.empty() else ("result", None)
+    if kind == "error" or result is None:
+        return "submitted_unconfirmed"
+    return "submitted"
 
 
 def submit_dry_run(

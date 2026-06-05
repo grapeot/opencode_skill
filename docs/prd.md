@@ -34,9 +34,9 @@ This project does not start or stop OpenCode servers, define project-specific pr
 
 ## Expected Behavior
 
-`submit` creates one session, sends one prompt from inline text, stdin, or a prompt file, optionally waits for completion, and preserves the session unless `--delete-session` is explicitly passed. Credentials and server URLs come from environment variables or `.env`; no public file contains real credentials.
+`submit` creates one session, sends one prompt from inline text, stdin, or a prompt file, and returns after handoff by default. It preserves the session unless `--delete-session` is explicitly passed. Callers that need blocking behavior can pass `--wait` to wait until OpenCode reports the session is no longer running. Credentials and server URLs come from environment variables or `.env`; no public file contains real credentials.
 
-`submit --dry-run` validates the same server, credential, model, provider, and agent path without sending the user's real prompt. It creates an ephemeral session, sends a fixed OK-only prompt, waits for completion, verifies that the final assistant response is exactly `OK`, and deletes the dry-run session by default. This is the preferred preflight before putting a future `submit --no-wait` command behind a scheduler.
+`submit --dry-run` validates the same server, credential, model, provider, and agent path without sending the user's real prompt. It creates an ephemeral session, sends a fixed OK-only prompt, waits for completion, verifies that the final assistant response is exactly `OK`, and deletes the dry-run session by default. This is the preferred preflight before putting a future `submit` command behind a scheduler.
 
 `batch submit` discovers Markdown spec files, renders a template for each spec, writes rendered prompts and a manifest, and optionally submits them to OpenCode with rate limiting. `--dry-run` must perform all rendering and manifest work without network calls.
 

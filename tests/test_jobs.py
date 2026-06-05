@@ -46,13 +46,23 @@ def test_read_prompt_requires_exactly_one_source(tmp_path: Path) -> None:
         read_prompt(prompt="inline", prompt_file=prompt_file)
 
 
-def test_submit_job_preserves_session_by_default() -> None:
+def test_submit_job_hands_off_by_default() -> None:
     client = FakeClient()
     result = submit_job(client, title="Synthetic Job", prompt="Do work", model="provider/model")
 
     assert result.session_id == "ses_job"
-    assert result.status == "completed"
+    assert result.status == "submitted"
     assert result.deleted is False
+    assert [call[0] for call in client.calls] == ["create_session", "send_message"]
+
+
+def test_submit_job_can_wait_for_completion() -> None:
+    client = FakeClient()
+    result = submit_job(client, title="Synthetic Job", prompt="Do work", model="provider/model", wait=True)
+
+    assert result.session_id == "ses_job"
+    assert result.status == "completed"
+    assert result.wait_completed is True
     assert [call[0] for call in client.calls] == ["create_session", "send_message", "wait_for_session_complete"]
 
 
@@ -74,6 +84,23 @@ def test_submit_job_can_skip_wait_and_delete_session() -> None:
     send_kwargs = client.calls[1][2]
     assert send_kwargs["model_id"] == "model"
     assert send_kwargs["provider_id"] == "provider"
+
+
+def test_submit_job_timeout_in_handoff_returns_session() -> None:
+    class SlowClient(FakeClient):
+        def send_message(self, *args: Any, **kwargs: Any) -> dict[str, bool]:
+            import time
+
+            self.calls.append(("send_message", args, kwargs))
+            time.sleep(0.1)
+            return {"ok": True}
+
+    client = SlowClient()
+    result = submit_job(client, title="Synthetic Job", prompt="Do work", model="provider/model", send_timeout=0.01)
+
+    assert result.session_id == "ses_job"
+    assert result.status == "submitted_timeout"
+    assert result.wait_completed is None
 
 
 def test_submit_dry_run_sends_only_harmless_prompt_and_deletes_session() -> None:
