@@ -83,7 +83,7 @@ Model strings can be passed as `provider/model` or as a model ID with a separate
 1. Require exactly one prompt source so the command shape matches a real future submission.
 2. Create a session titled with a `[dry-run]` prefix.
 3. Send the fixed prompt that tells OpenCode to perform no task and reply exactly `OK`.
-4. Wait for session completion regardless of `--no-wait`.
+4. Wait for session completion regardless of the default handoff behavior.
 5. Read session messages and require the latest assistant text to equal `OK` after whitespace trimming.
 6. Delete the dry-run session by default, unless `--keep-dry-run-session` is passed for debugging.
 

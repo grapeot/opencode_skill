@@ -4,9 +4,9 @@ This document defines the behavior and success criteria for a public, local-firs
 
 ## Background
 
-OpenCode has two common local automation surfaces. The first is the HTTP server used to create sessions and send agent prompts. The second is the SQLite data store that keeps sessions, messages, parts, and project metadata. A useful agent skill should cover both surfaces through one package and one root skill.
+OpenCode has two common local automation surfaces. The first is the HTTP server used to create sessions and send agent prompts. The second is the SQLite data store that keeps sessions, messages, parts, and project metadata. A useful package should cover both surfaces while exposing separate agent skill entry points for submission, data maintenance, and recurring scheduling.
 
-Submission workflows create local sessions. Maintenance workflows inspect, archive, and compact the databases after those sessions exist. Keeping these in one public skill makes the workflow easier for AI agents: submit work, record manifests, later archive or analyze the resulting sessions.
+Submission workflows create local sessions. Maintenance workflows inspect, archive, and compact the databases after those sessions exist. Keeping these in one public package makes the workflow easier for AI agents while preserving clear skill boundaries: submit work, record manifests, later archive or analyze the resulting sessions.
 
 ## Users
 
@@ -63,8 +63,8 @@ Submission commands must make side effects visible. Batch rendering dry runs mus
 The project is ready for public use when:
 
 1. Offline tests pass using only synthetic fixtures.
-2. The README and root skill explain safe installation, configuration, single submission, batch submission, planning, application, and verification.
+2. The README and public skill files explain safe installation, configuration, single submission, batch submission, planning, application, and verification.
 3. Public docs contain no real session content, private paths, secrets, or personal operational logs.
 4. `.gitignore` blocks runtime data, local configuration, logs, build artifacts, and SQLite sidecars.
 5. The package can be installed with `uv pip install --python .venv/bin/python -e '.[dev]'` and imported without path hacks.
-6. Global workspace skills route OpenCode job submission, batch submission, and data maintenance to the same public root skill or a private overlay that references it.
+6. Global workspace skills route OpenCode job submission, batch submission, recurring scheduling, and data maintenance to the appropriate public skill file or a private overlay that references it.
