@@ -12,6 +12,7 @@ build/
 # Runtime output and logs
 tmp/
 logs/
+prompts/
 batch_runs/
 opencode_batches/
 *.log

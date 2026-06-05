@@ -38,6 +38,8 @@ For one-off jobs, prefer `--prompt-file` or `--stdin` over inline prompt text. R
 
 The default real-submit behavior returns after handoff and preserves the session for auditability. Use `--wait` only when the caller intentionally wants to block until OpenCode reports completion. Use `--delete-session` only when the user explicitly wants an ephemeral session removed after submission or wait completion.
 
+For future-dated OpenCode submissions, keep the prompt file under an ignored stable directory such as `prompts/` in this repository or an equivalent private execution repo. Do not put scheduled prompt files under `tmp/`, because cleanup jobs may remove them before the delayed command runs. Do not put operational prompts in long-term research/report directories unless the prompt itself is part of the user-facing artifact. Process Launcher may own the delayed process lifecycle and logs, but the prompt file should live with the OpenCode submission workflow that consumes it.
+
 ## Batch Submission Workflow
 
 For batch jobs, run `--dry-run` first. Inspect the manifest and rendered prompts under the configured output root. Use `--smoke-slug` for one real submission before submitting a larger set. Batch session titles must start with `batch-`, which keeps later archive selectors auditable.
@@ -54,6 +56,7 @@ For batch jobs, run `--dry-run` first. Inspect the manifest and rendered prompts
 
 - Prefer `--prompt-file` or `--stdin` for private prompts.
 - Use `submit --dry-run` before scheduling a single future OpenCode submission.
+- Store scheduled prompt files in an ignored stable `prompts/` directory, not `tmp/`.
 - Use `--dry-run` and `--smoke-slug` before a large batch submission.
 - Never commit `.env`, logs, generated manifests, rendered prompts, exported sessions, or real operation reports.
 - Never print prompt/message body content during a privacy review; report paths and categories instead.
