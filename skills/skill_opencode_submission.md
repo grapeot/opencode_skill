@@ -2,7 +2,7 @@
 
 ## When To Use
 
-Use this skill when a user asks you to submit one prompt to OpenCode, run a template-driven batch of OpenCode sessions, or group QA work by slug.
+Use this skill when a user asks you to submit one prompt to OpenCode, append a follow-up prompt to an existing OpenCode session, run a template-driven batch of OpenCode sessions, or group QA work by slug.
 
 This skill does not start or stop OpenCode servers and does not define private prompt policy. Use the user's `.env` or private overlay for endpoint, credential, model, agent, template, and routing defaults.
 
@@ -26,6 +26,8 @@ All commands run from the project root.
 .venv/bin/python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model --dry-run
 .venv/bin/python -m opencode_skill submit "Synthetic prompt"
 .venv/bin/python -m opencode_skill submit --prompt-file prompt.md --wait
+.venv/bin/python -m opencode_skill append --session-id ses_example --prompt-file followup.md --model example/default-model
+.venv/bin/python -m opencode_skill append --session-id ses_example --prompt-file followup.md --dry-run --json
 
 .venv/bin/python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --dry-run
 .venv/bin/python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --smoke-slug sample
@@ -40,6 +42,42 @@ The default real-submit behavior returns after handoff and preserves the session
 
 For future-dated OpenCode submissions, keep the prompt file under an ignored stable directory such as `prompts/` in this repository or an equivalent private execution repo. Do not put scheduled prompt files under `tmp/`, because cleanup jobs may remove them before the delayed command runs. Do not put operational prompts in long-term research/report directories unless the prompt itself is part of the user-facing artifact. Process Launcher may own the delayed process lifecycle and logs, but the prompt file should live with the OpenCode submission workflow that consumes it.
 
+## Existing Session Append Workflow
+
+Use `append` when the desired behavior is to bump or continue an existing OpenCode session instead of creating a new one. Prefer `--prompt-file` or `--stdin` for private follow-up prompts:
+
+```bash
+.venv/bin/python -m opencode_skill append --session-id ses_example --prompt-file prompts/reminder.md --send-timeout 5 --json
+```
+
+Run `append --dry-run` before scheduling a future append. The dry run verifies that the target session is reachable, then creates an ephemeral dry-run session and sends only the built-in `OK` prompt there. It does not append test content to the target session.
+
+If the user asks for the current session and no session ID is exposed in the environment, infer it from the OpenCode SQLite `session` table using read-only metadata. Query sessions for the current working directory, sort by `time_updated DESC`, and use the top candidate only when the directory, recent update time, and title all match the current interaction. If multiple sessions in the same directory are active or the title/time signals disagree, ask for an explicit session ID instead of guessing. After choosing a candidate, verify it with `GET /session/{id}` or `append --dry-run` before a real append. Do not inspect or print message bodies for this inference unless the user explicitly asks.
+
+Example metadata query:
+
+```sql
+SELECT id, title, directory, time_created, time_updated
+FROM session
+WHERE directory = :current_working_directory
+ORDER BY time_updated DESC
+LIMIT 8;
+```
+
+For one-shot delayed reminders, combine `append` with the Process Launcher durable scheduler rather than a raw `sleep` or cron entry. Keep the prompt in a stable ignored file, run `append --dry-run`, then schedule the real command through Process Launcher with `delay_seconds` or `run_at`:
+
+```bash
+curl -X POST http://localhost:7997/run \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "command": ["/absolute/path/to/opencode_skill/.venv/bin/python", "-m", "opencode_skill", "append", "--session-id", "ses_example", "--prompt-file", "/absolute/path/to/prompts/reminder.md", "--send-timeout", "5"],
+    "cwd": "/absolute/path/to/opencode_skill",
+    "label": "opencode_append_reminder",
+    "delay_seconds": 1800,
+    "timeout": 300
+  }'
+```
+
 ## Batch Submission Workflow
 
 For batch jobs, run `--dry-run` first. Inspect the manifest and rendered prompts under the configured output root. Use `--smoke-slug` for one real submission before submitting a larger set. Batch session titles must start with `batch-`, which keeps later archive selectors auditable.
@@ -50,12 +88,15 @@ For batch jobs, run `--dry-run` first. Inspect the manifest and rendered prompts
 
 `submit` prints the session ID, status, deletion state, and dry-run state, or a JSON object with the same fields when `--json` is passed. Default handoff statuses include `submitted`, `submitted_timeout`, and `submitted_unconfirmed`; all preserve the session ID for follow-up. For `submit --dry-run`, success means the assistant response was exactly `OK`.
 
+`append` prints the target session ID, status, and dry-run state. For real appends, `session_id` is the target session. For `append --dry-run`, `session_id` is the ephemeral dry-run session and `target_session_id` is the session that was checked.
+
 `batch submit` and `batch qa` write a `batch_manifest.json` and rendered prompt files under the output root. `--dry-run` prints a small JSON summary and avoids network calls.
 
 ## Safety Rules
 
 - Prefer `--prompt-file` or `--stdin` for private prompts.
 - Use `submit --dry-run` before scheduling a single future OpenCode submission.
+- Use `append --dry-run` before scheduling a future append to an existing session.
 - Store scheduled prompt files in an ignored stable `prompts/` directory, not `tmp/`.
 - Use `--dry-run` and `--smoke-slug` before a large batch submission.
 - Never commit `.env`, logs, generated manifests, rendered prompts, exported sessions, or real operation reports.

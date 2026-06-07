@@ -1,6 +1,6 @@
 # OpenCode Skill
 
-OpenCode Skill is a local-first CLI and agent skill for submitting work to a user-controlled OpenCode HTTP server and maintaining OpenCode's SQLite data afterward. It supports single prompt submission, template-driven batch submission, batch QA grouping, read-only stats, plan-before-apply archiving, and database compaction.
+OpenCode Skill is a local-first CLI and agent skill for submitting work to a user-controlled OpenCode HTTP server and maintaining OpenCode's SQLite data afterward. It supports single prompt submission, appending a follow-up prompt to an existing session, template-driven batch submission, batch QA grouping, read-only stats, plan-before-apply archiving, and database compaction.
 
 This repository is designed to be publishable with only fake examples. Runtime data, `.env`, logs, generated manifests, rendered prompts, archive databases, and real operational notes must stay outside git.
 
@@ -43,6 +43,15 @@ Use `submit --dry-run` before putting a future submission behind a scheduler. It
 
 Real `submit` returns after handoff by default and preserves the session for auditability. Use `--wait` only when the caller intentionally wants to block until OpenCode reports the session is no longer running.
 
+Append to an existing session:
+
+```bash
+.venv/bin/python -m opencode_skill append --session-id ses_example --prompt-file followup.md --model example/default-model
+.venv/bin/python -m opencode_skill append --session-id ses_example --prompt-file followup.md --dry-run --json
+```
+
+Use `append` when the desired behavior is to bump or continue an existing OpenCode session instead of creating a new one. `append --dry-run` first verifies that the target session is reachable, then creates an ephemeral dry-run session and sends the built-in `OK` prompt there. This validates credentials and model/agent routing without adding test messages to the target session.
+
 Batch submission and QA:
 
 ```bash
@@ -80,7 +89,7 @@ Prefer explicit `--main`, `--archive`, and `--dest` paths when working outside t
 
 ## For AI Agents
 
-When a user asks you to submit or batch OpenCode work, read `skills/skill_opencode_submission.md` first. When a user asks you to inspect, archive, compact, or query local OpenCode SQLite data, read `skills/skill_opencode_data.md` first. For recurring cron submission workflows, read `skills/skill_opencode_periodic_job.md`.
+When a user asks you to submit, append, or batch OpenCode work, read `skills/skill_opencode_submission.md` first. When a user asks you to inspect, archive, compact, or query local OpenCode SQLite data, read `skills/skill_opencode_data.md` first. For recurring cron submission workflows, read `skills/skill_opencode_periodic_job.md`.
 
 Use public mechanics from this repo and private defaults from the user's own `.env` or overlay. Do not copy private prompts, endpoints, model names, agent names, session IDs, manifests, database paths, or logs into public files.
 

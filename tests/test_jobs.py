@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from opencode_skill.jobs import DRY_RUN_PROMPT, DryRunVerificationError, read_prompt, submit_dry_run, submit_job
+from opencode_skill.jobs import DRY_RUN_PROMPT, DryRunVerificationError, append_job, read_prompt, submit_dry_run, submit_job
 
 
 class FakeClient:
@@ -101,6 +101,27 @@ def test_submit_job_timeout_in_handoff_returns_session() -> None:
     assert result.session_id == "ses_job"
     assert result.status == "submitted_timeout"
     assert result.wait_completed is None
+
+
+def test_append_job_sends_to_existing_session_without_creating() -> None:
+    client = FakeClient()
+    result = append_job(client, session_id="ses_existing", prompt="Follow up", model="provider/model")
+
+    assert result.session_id == "ses_existing"
+    assert result.status == "submitted"
+    assert result.deleted is False
+    assert [call[0] for call in client.calls] == ["send_message"]
+    assert client.calls[0][1][0] == "ses_existing"
+
+
+def test_append_job_can_wait_for_existing_session_completion() -> None:
+    client = FakeClient()
+    result = append_job(client, session_id="ses_existing", prompt="Follow up", model="provider/model", wait=True)
+
+    assert result.session_id == "ses_existing"
+    assert result.status == "completed"
+    assert result.wait_completed is True
+    assert [call[0] for call in client.calls] == ["send_message", "wait_for_session_complete"]
 
 
 def test_submit_dry_run_sends_only_harmless_prompt_and_deletes_session() -> None:

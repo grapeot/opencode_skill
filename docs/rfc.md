@@ -14,7 +14,7 @@ src/opencode_skill/client.py
   Minimal OpenCode HTTP client using Basic auth and environment configuration
 
 src/opencode_skill/jobs.py
-  Single-session submission workflow
+  Single-session submission and append workflows
 
 src/opencode_skill/batch.py
   Batch spec discovery, template rendering, QA grouping, manifests, and rate limiting
@@ -62,7 +62,7 @@ Credentials, ports, preferred model names, and preferred agent names belong in `
 The public client talks to the OpenCode server with Basic auth and a small endpoint set. It reads process env plus a CWD `.env` file, accepts explicit constructor overrides for tests, and raises typed exceptions without including credentials in error messages:
 
 - `POST /session` to create a session
-- `POST /session/{id}/message` to send a prompt
+- `POST /session/{id}/message` to send a prompt or append a follow-up prompt
 - `GET /session/{id}` to inspect session metadata
 - `GET /session/{id}/message` to inspect messages for smoke verification
 - `DELETE /session/{id}` to delete ephemeral sessions
@@ -88,6 +88,36 @@ Model strings can be passed as `provider/model` or as a model ID with a separate
 6. Delete the dry-run session by default, unless `--keep-dry-run-session` is passed for debugging.
 
 The dry run intentionally performs a small network side effect because it is a connectivity and agent-routing preflight. It must not send the real prompt or inspect the user's workspace.
+
+## Existing Session Append
+
+`append` accepts prompt text as an argument, from `--prompt-file`, or from `--stdin`, plus a required `--session-id`. It sends the prompt to an existing session via `POST /session/{id}/message`, returns after handoff by default, and can block with `--wait` when the caller needs completion semantics.
+
+`append --dry-run` uses the same prompt-source validation as a real append command, but it does not send the real prompt to the target session. The flow is:
+
+1. Require exactly one prompt source so the command shape matches a real future append.
+2. Fetch `GET /session/{target_id}` to verify the target session is reachable.
+3. Create an ephemeral session titled with a `[dry-run] append <target_id>` prefix.
+4. Send the fixed `OK` prompt to the ephemeral dry-run session with the requested model/provider/agent.
+5. Wait for completion, require the latest assistant text to equal `OK`, and delete the dry-run session by default.
+
+This gives schedulers a preflight for credentials, target-session reachability, and model/agent routing without polluting the target session history. If a caller needs a true live append probe, it should use a clearly harmless real prompt and accept that it becomes part of the target session.
+
+## Inferring The Current Session
+
+OpenCode does not always expose the current session ID in the agent process environment. When an agent needs to append back into its current session and no explicit `--session-id` is available, it can use the local SQLite database as a best-effort inference source.
+
+The safe inference pattern is read-only and uses the `session` table, not message bodies:
+
+```sql
+SELECT id, title, directory, time_created, time_updated
+FROM session
+WHERE directory = :current_working_directory
+ORDER BY time_updated DESC
+LIMIT 8;
+```
+
+Use the top candidate only when multiple signals agree: the directory equals the current workspace, `time_updated` is close to the current interaction, and the title matches the user's current task. If several active sessions in the same directory have similar update times, require an explicit session ID. After choosing a candidate, verify it with `GET /session/{id}` before appending. Do not read or print prompt/message bodies unless the user explicitly asks for content inspection.
 
 ## Batch Submission
 
@@ -169,6 +199,8 @@ python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" 
 python -m opencode_skill submit --prompt-file prompt.md --title "Synthetic Job" --model example/default-model --dry-run
 python -m opencode_skill submit "Synthetic prompt"
 python -m opencode_skill submit --prompt-file prompt.md --wait
+python -m opencode_skill append --session-id ses_example --prompt-file followup.md --model example/default-model
+python -m opencode_skill append --session-id ses_example --prompt-file followup.md --dry-run --json
 python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --dry-run
 python -m opencode_skill batch qa --slugs alpha,beta --output-root tmp/batch_runs --group-size 2 --dry-run
 python -m opencode_skill stats --json
