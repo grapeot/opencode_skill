@@ -156,6 +156,12 @@ If the copy phase fails, the destination may contain partial extra rows and the 
 
 The query layer parses message JSON in Python rather than relying on SQLite JSON extraction. A single malformed message row should not abort an analytics run.
 
+## Session Export
+
+`export_sessions` reads the main database read-only and emits one markdown file per session. For each session it loads ordered user/assistant turns: message rows supply the role and model id from their JSON `data`, and the human-visible text comes from `part` rows of type `text`, concatenated in time order. Sessions with no user turn are skipped, as are subagent fan-out sessions whose titles match known subagent patterns unless the caller opts in.
+
+The output format is a stable contract for date-indexed downstream consumers rather than an internal dump. Each file opens with a YAML frontmatter block that always includes `source: opencode` and a `date` field (the session creation date), followed by `## User` and `## Assistant` section headers. A consumer can therefore select sessions by date and split turns by header without reading the database. The export module owns its own small markdown renderer and filename helpers so the public repository carries no dependency on any private export pipeline.
+
 ## CLI Surface
 
 ```bash
@@ -172,6 +178,7 @@ python -m opencode_skill plan --selector time --before 30d
 python -m opencode_skill apply --selector ids --file session_ids.txt --dest ~/.local/share/opencode/opencode_archive.db --confirm
 python -m opencode_skill apply --selector title --prefix batch- --dest ~/.local/share/opencode/opencode_archive.db --confirm --no-delete
 python -m opencode_skill vacuum-main --confirm
+python -m opencode_skill export --out tmp/sessions --since 30d --dry-run
 ```
 
 Global path options:
@@ -199,7 +206,7 @@ For real maintenance, run against a backup or disposable copy first. Stop OpenCo
 
 ## Test Strategy
 
-The offline test suite uses a schema-only fixture database, synthetic rows, fake HTTP sessions, and fake OpenCode clients. It should cover client auth and payloads, single-job preserve/delete behavior, batch rendering, manifests, dry-run network avoidance, send timeouts, selector behavior, read-only connections, copy/verify/delete migration semantics, idempotency, descendant expansion, and query aggregation across main plus archive databases.
+The offline test suite uses a schema-only fixture database, synthetic rows, fake HTTP sessions, and fake OpenCode clients. It should cover client auth and payloads, single-job preserve/delete behavior, batch rendering, manifests, dry-run network avoidance, send timeouts, selector behavior, read-only connections, copy/verify/delete migration semantics, idempotency, descendant expansion, query aggregation across main plus archive databases, and session export rendering and filtering.
 
 Manual validation against a real OpenCode installation is intentionally outside CI and must not write real session content into repository files.
 

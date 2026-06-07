@@ -9,7 +9,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import batch, migrate, query, selector
+from . import batch, export, migrate, query, selector
 from .client import OpenCodeClient
 from .jobs import DryRunVerificationError, read_prompt, submit_dry_run, submit_job
 
@@ -238,6 +238,27 @@ def cmd_submit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    since_ms = _parse_cutoff_ms(args.since) if args.since else None
+    try:
+        result = export.export_sessions(
+            args.main,
+            args.out,
+            since_ms=since_ms,
+            skip_subagent=not args.include_subagent,
+            dry_run=args.dry_run,
+        )
+    except FileNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        return 3
+    if args.json_out:
+        print(json.dumps(result, indent=2))
+    else:
+        verb = "would export" if args.dry_run else "exported"
+        print(f"scanned={result['scanned']}  {verb}={result['exported']}  out={args.out}")
+    return 0
+
+
 def cmd_batch(args: argparse.Namespace) -> int:
     try:
         batch.validate_args(args)
@@ -302,6 +323,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_submit.add_argument("--wait-max-seconds", type=float, default=7200.0)
     p_submit.add_argument("--json", dest="json_out", action="store_true")
     p_submit.set_defaults(func=cmd_submit)
+
+    p_export = sub.add_parser(
+        "export", help="export OpenCode sessions to markdown (one file per session)"
+    )
+    p_export.add_argument(
+        "--out", type=Path, required=True, help="output directory for markdown files"
+    )
+    p_export.add_argument(
+        "--since",
+        help="only sessions created after this cutoff (e.g. '30d' or '2026-04-09')",
+    )
+    p_export.add_argument(
+        "--include-subagent",
+        action="store_true",
+        help="include subagent/system fan-out sessions (skipped by default)",
+    )
+    p_export.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report what would be exported without writing files",
+    )
+    p_export.add_argument("--json", dest="json_out", action="store_true")
+    p_export.set_defaults(func=cmd_export)
 
     p_batch = sub.add_parser("batch", help="render and submit batch OpenCode jobs")
     batch.add_arguments(p_batch)

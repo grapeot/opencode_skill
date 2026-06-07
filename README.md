@@ -60,6 +60,16 @@ SQLite maintenance:
 .venv/bin/python -m opencode_skill vacuum-main --confirm
 ```
 
+Session export to markdown:
+
+```bash
+.venv/bin/python -m opencode_skill export --out tmp/sessions --dry-run
+.venv/bin/python -m opencode_skill export --out tmp/sessions --since 30d
+.venv/bin/python -m opencode_skill export --out tmp/sessions --json
+```
+
+`export` reads the main OpenCode database read-only and writes one markdown file per session that has at least one user turn. Each file starts with a YAML frontmatter block (`source: opencode`, `date`, `title`, and similar) followed by `## User` / `## Assistant` sections, so downstream tools can match sessions by date and extract turns. Subagent fan-out sessions are skipped unless `--include-subagent` is passed. Exported markdown can contain private prompts and messages; keep the output directory out of git.
+
 A convenience wrapper is also available after installation:
 
 ```bash
