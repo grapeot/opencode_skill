@@ -22,6 +22,7 @@ _SUBAGENT_PATTERNS = (
 class MessageTurn:
     role: str  # 'user' or 'assistant'
     content: str
+    time_created: int | None = None  # ms epoch of the turn's first message, if known
 
 
 @dataclass
@@ -40,6 +41,11 @@ class SessionExport:
 
 def _ms_to_date(epoch_ms: int) -> str:
     return datetime.fromtimestamp(epoch_ms / 1000).date().isoformat()
+
+
+def _ms_to_hhmm(epoch_ms: int) -> str:
+    """Local-time HH:MM for a ms epoch (used in per-turn markdown headers)."""
+    return datetime.fromtimestamp(epoch_ms / 1000).strftime("%H:%M")
 
 
 def _sanitize_filename(title: str, max_length: int = 80) -> str:
@@ -89,7 +95,8 @@ def load_session_messages(
         """
         SELECT id,
                COALESCE(json_extract(data, '$.role'), ''),
-               COALESCE(json_extract(data, '$.modelID'), '')
+               COALESCE(json_extract(data, '$.modelID'), ''),
+               time_created
         FROM message
         WHERE session_id = ?
         ORDER BY time_created ASC
@@ -101,7 +108,7 @@ def load_session_messages(
     models: set[str] = set()
     user_count = 0
 
-    for message_id, role, model_id in cursor.fetchall():
+    for message_id, role, model_id, time_created in cursor.fetchall():
         if role not in {"user", "assistant"}:
             continue
         cursor.execute(
@@ -118,7 +125,8 @@ def load_session_messages(
         content = "".join(row[0] for row in cursor.fetchall()).strip()
         if not content:
             continue
-        messages.append(MessageTurn(role=role, content=content))
+        turn_time = int(time_created) if time_created is not None else None
+        messages.append(MessageTurn(role=role, content=content, time_created=turn_time))
         if role == "user":
             user_count += 1
         if role == "assistant" and model_id:
@@ -149,7 +157,10 @@ def render_markdown(session: SessionExport) -> str:
 
     for message in session.messages:
         section = "User" if message.role == "user" else "Assistant"
-        lines.append(f"## {section}")
+        if message.time_created:
+            lines.append(f"## {section} [{_ms_to_hhmm(message.time_created)}]")
+        else:
+            lines.append(f"## {section}")
         lines.append("")
         lines.append(message.content.rstrip())
         lines.append("")
