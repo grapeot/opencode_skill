@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sqlite3
 from datetime import datetime
@@ -115,6 +116,46 @@ def test_render_markdown_contract():
     assert "## Assistant" in md
 
 
+def test_render_markdown_per_turn_timestamp():
+    t_user = int(datetime(2026, 6, 1, 9, 30).timestamp() * 1000)
+    t_assistant = int(datetime(2026, 6, 1, 9, 31).timestamp() * 1000)
+    record = export.SessionExport(
+        session_id="abc",
+        title="My Session",
+        date="2026-06-01",
+        messages=[
+            export.MessageTurn("user", "hi", time_created=t_user),
+            export.MessageTurn("assistant", "hello", time_created=t_assistant),
+        ],
+    )
+    md = export.render_markdown(record)
+    assert "\n## User [09:30]\n\nhi\n" in md
+    assert "\n## Assistant [09:31]\n\nhello\n" in md
+    # frontmatter date untouched.
+    assert 'date: "2026-06-01"' in md
+
+
+def test_render_markdown_without_timestamp_is_backward_compatible():
+    record = export.SessionExport(
+        session_id="abc",
+        title="My Session",
+        date="2026-06-01",
+        messages=[export.MessageTurn("user", "hi")],
+    )
+    md = export.render_markdown(record)
+    assert "\n## User\n\nhi\n" in md
+    assert "## User [" not in md
+
+
+def test_turn_header_regex_matches_both_forms():
+    pattern = re.compile(r"^## (User|Assistant)(?: \[\d{2}:\d{2}\])?\s*$")
+    assert pattern.match("## User")
+    assert pattern.match("## Assistant")
+    assert pattern.match("## User [09:30]")
+    assert pattern.match("## Assistant [23:59]")
+    assert not pattern.match("## User extra text")
+
+
 def test_export_writes_only_sessions_with_user_turns(export_db, tmp_path):
     out = tmp_path / "md"
     result = export.export_sessions(export_db, out)
@@ -141,6 +182,49 @@ def test_export_since_filter(export_db, tmp_path):
     result = export.export_sessions(export_db, out, since_ms=_ts("2026-06-02"))
     # S_chat (06-01) excluded by cutoff; remaining have no user turn / are subagent.
     assert result["exported"] == 0
+
+
+def test_export_writes_per_turn_timestamps(tmp_path, empty_template_db):
+    db = tmp_path / "ts.db"
+    shutil.copyfile(empty_template_db, db)
+    conn = sqlite3.connect(str(db))
+    try:
+        session_time = int(datetime(2026, 6, 1, 9, 0).timestamp() * 1000)
+        conn.execute(
+            "INSERT OR IGNORE INTO project (id, worktree, vcs, time_created, time_updated, sandboxes) VALUES (?,?,?,?,?,?)",
+            ("Pt", "/synthetic/project", "git", session_time, session_time, "[]"),
+        )
+        conn.execute(
+            "INSERT INTO session (id, project_id, slug, directory, title, version, time_created, time_updated) VALUES (?,?,?,?,?,?,?,?)",
+            ("S_ts", "Pt", "s_ts", "/synthetic/project", "Timestamped chat", "0.0.0", session_time, session_time),
+        )
+        turns = [
+            ("user", "synthetic question", None, int(datetime(2026, 6, 1, 9, 15).timestamp() * 1000)),
+            ("assistant", "synthetic answer", "synthetic/model", int(datetime(2026, 6, 1, 9, 16).timestamp() * 1000)),
+        ]
+        for i, (role, text, model_id, msg_ts) in enumerate(turns):
+            msg_id = f"S_ts_m{i}"
+            data: dict = {"role": role}
+            if model_id:
+                data["modelID"] = model_id
+            conn.execute(
+                "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?)",
+                (msg_id, "S_ts", msg_ts, msg_ts, json.dumps(data)),
+            )
+            conn.execute(
+                "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?,?)",
+                (f"{msg_id}_p0", msg_id, "S_ts", msg_ts, msg_ts, json.dumps({"type": "text", "text": text})),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    out = tmp_path / "md"
+    result = export.export_sessions(db, out)
+    assert result["exported"] == 1
+    text = Path(result["files"][0]).read_text(encoding="utf-8")
+    assert "## User [09:15]" in text
+    assert "## Assistant [09:16]" in text
 
 
 def test_export_dry_run_writes_nothing(export_db, tmp_path):
