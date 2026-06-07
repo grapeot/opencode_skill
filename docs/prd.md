@@ -50,6 +50,8 @@ This project does not start or stop OpenCode servers, define project-specific pr
 
 `vacuum-main` is separate from `apply`. SQLite file compaction has different operational risks and should require its own explicit confirmation.
 
+`export` is always read-only on the source database. It writes one markdown file per session that has at least one user turn, using a stable frontmatter-plus-section format (`source: opencode`, a `date` field, then `## User` / `## Assistant` sections) so date-indexed downstream tools can match sessions and extract turns. It supports a creation-time cutoff, optional inclusion of subagent fan-out sessions, and a dry run. Exported markdown can contain private prompts and messages and is treated as runtime data that stays out of git.
+
 Query helpers should make accounting complete by default: analytics callers include archives unless they explicitly opt out. Export callers can request source-only behavior when they want archived sessions excluded.
 
 ## Safety Requirements

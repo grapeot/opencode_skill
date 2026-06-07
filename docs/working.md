@@ -26,7 +26,20 @@ This public working log records project-level changes and validation results wit
 - Fixed `apply --no-expand` so deletion uses resolved session IDs rather than raw selector parameters.
 - Ran offline tests and current-tree privacy scans.
 
+### 2026-06-06
+
+- Added an `export` CLI subcommand that reads the main OpenCode database read-only and writes one markdown file per session with at least one user turn.
+- Exported markdown follows a stable contract: YAML frontmatter with `source: opencode` and a `date` field, then `## User` / `## Assistant` sections, so date-indexed downstream consumers can match sessions and extract turns without coupling to the database.
+- Added `--since` (relative window or ISO date), `--include-subagent`, `--dry-run`, and `--json` flags; subagent fan-out sessions are skipped by default.
+- Added offline unit and CLI tests using a synthetic SQLite fixture with only fake content.
+
 ## Validation
+
+### 2026-06-06
+
+- `.venv/bin/python -m pytest -q`: passed after adding the export command and tests.
+- Verified the exported markdown format against an external date-indexed consumer: a synthetic session round-tripped through `export` and was parsed back into user turns tagged `opencode`.
+- Current-tree privacy review: export module and tests use only synthetic content; no real paths, session IDs, prompts, or model names added.
 
 ### 2026-05-25
 

@@ -30,6 +30,9 @@ All commands run from the project root.
 .venv/bin/python -m opencode_skill apply --selector title --prefix batch- --dest ~/.local/share/opencode/opencode_archive.db --confirm --no-delete
 
 .venv/bin/python -m opencode_skill vacuum-main --confirm
+
+.venv/bin/python -m opencode_skill export --out OUTPUT_DIR --dry-run
+.venv/bin/python -m opencode_skill export --out OUTPUT_DIR --since 30d
 ```
 
 Optional global database path flags:
@@ -73,6 +76,8 @@ By default, CLI selectors expand descendants through the session `parent_id` cha
 `plan` prints the selector description, resolved session count, message count, part count, and sample titles. Treat sample titles as potentially private. Do not paste them into public logs.
 
 `apply` prints copy counts, verification counts, and delete counts. A verification failure must leave the source database unchanged.
+
+`export` reads the source database read-only and writes one markdown file per session that has at least one user turn. It returns scanned and exported counts (and the written file paths under `--json`). Each file begins with a YAML frontmatter block carrying `source: opencode` and a `date` field, followed by `## User` and `## Assistant` sections. Subagent fan-out sessions are skipped unless `--include-subagent` is set; `--since` accepts a relative window (e.g. `30d`) or an ISO date. Treat exported markdown as private: it contains prompt and message bodies and must never be committed.
 
 ## Safety Rules
 
