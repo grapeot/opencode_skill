@@ -307,3 +307,82 @@ def test_cli_submit_dry_run_returns_2_on_verification_failure(tmp_path, monkeypa
 
     assert rc == 2
     assert "dry run failed" in capsys.readouterr().err
+
+
+def test_cli_append_sends_prompt_to_existing_session(tmp_path, monkeypatch, capsys):
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Follow up", encoding="utf-8")
+
+    class FakeClient:
+        def send_message(self, session_id, message, **kwargs):
+            assert session_id == "ses_existing"
+            assert message == "Follow up"
+            assert kwargs["model_id"] == "model"
+            assert kwargs["provider_id"] == "provider"
+            return {"ok": True}
+
+    monkeypatch.setattr(cli, "OpenCodeClient", FakeClient)
+
+    rc = cli.main([
+        "append",
+        "--session-id", "ses_existing",
+        "--prompt-file", str(prompt_file),
+        "--model", "model",
+        "--provider", "provider",
+        "--json",
+    ])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["session_id"] == "ses_existing"
+    assert payload["target_session_id"] == "ses_existing"
+    assert payload["status"] == "submitted"
+
+
+def test_cli_append_dry_run_verifies_target_and_uses_ephemeral_session(tmp_path, monkeypatch, capsys):
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Real follow-up should not be sent", encoding="utf-8")
+
+    class FakeClient:
+        def __init__(self):
+            self.checked = []
+
+        def get_session_info(self, session_id):
+            self.checked.append(session_id)
+            return {"id": session_id}
+
+        def create_session(self, title):
+            assert title == "[dry-run] append ses_existing"
+            return "ses_dry_append"
+
+        def send_message(self, session_id, message, **_kwargs):
+            assert session_id == "ses_dry_append"
+            assert "Real follow-up should not be sent" not in message
+            return {"ok": True}
+
+        def wait_for_session_complete(self, *_args, **_kwargs):
+            return True
+
+        def get_session_messages(self, *_args, **_kwargs):
+            return [{"info": {"role": "assistant"}, "parts": [{"text": "OK"}]}]
+
+        def delete_session(self, *_args, **_kwargs):
+            return True
+
+    monkeypatch.setattr(cli, "OpenCodeClient", FakeClient)
+
+    rc = cli.main([
+        "append",
+        "--session-id", "ses_existing",
+        "--prompt-file", str(prompt_file),
+        "--model", "provider/model",
+        "--dry-run",
+        "--json",
+    ])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["session_id"] == "ses_dry_append"
+    assert payload["target_session_id"] == "ses_existing"
+    assert payload["status"] == "dry_run_ok_deleted"
+    assert payload["verification"] == "assistant_replied_ok"

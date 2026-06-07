@@ -108,6 +108,55 @@ def submit_job(
     )
 
 
+def append_job(
+    client: Any,
+    *,
+    session_id: str,
+    prompt: str,
+    model: str,
+    provider: str | None = None,
+    agent: str | None = None,
+    wait: bool = False,
+    send_timeout: float | None = None,
+    wait_poll_interval: float = 15.0,
+    wait_max_seconds: float = 7200.0,
+) -> JobSubmissionResult:
+    provider_id, model_id = infer_provider(model, provider)
+    wait_completed = None
+    if wait:
+        client.send_message(
+            session_id,
+            prompt,
+            model_id=model_id,
+            provider_id=provider_id,
+            agent=agent,
+            timeout=send_timeout,
+        )
+        wait_completed = client.wait_for_session_complete(
+            session_id,
+            poll_interval=wait_poll_interval,
+            max_wait=wait_max_seconds,
+        )
+        status = "completed" if wait_completed else "wait_timeout"
+    else:
+        status = _send_message_for_handoff(
+            client,
+            session_id=session_id,
+            prompt=prompt,
+            model_id=model_id,
+            provider_id=provider_id,
+            agent=agent,
+            send_timeout=send_timeout,
+        )
+    return JobSubmissionResult(
+        session_id=session_id,
+        title="",
+        status=status,
+        deleted=False,
+        wait_completed=wait_completed,
+    )
+
+
 def _send_message_for_handoff(
     client: Any,
     *,

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import batch, export, migrate, query, selector
 from .client import OpenCodeClient
-from .jobs import DryRunVerificationError, read_prompt, submit_dry_run, submit_job
+from .jobs import DryRunVerificationError, append_job, read_prompt, submit_dry_run, submit_job
 
 def _load_dotenv(path: Path) -> None:
     if not path.exists():
@@ -238,6 +238,62 @@ def cmd_submit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_append(args: argparse.Namespace) -> int:
+    prompt_text = read_prompt(prompt=args.prompt, prompt_file=args.prompt_file, use_stdin=args.stdin)
+    client = OpenCodeClient()
+    try:
+        if args.dry_run:
+            client.get_session_info(args.session_id)
+            result = submit_dry_run(
+                client,
+                title=f"append {args.session_id}",
+                model=args.model,
+                provider=args.provider,
+                agent=args.agent,
+                delete_session=not args.keep_dry_run_session,
+                send_timeout=args.send_timeout,
+                wait_poll_interval=args.wait_poll_interval,
+                wait_max_seconds=args.wait_max_seconds,
+            )
+        else:
+            result = append_job(
+                client,
+                session_id=args.session_id,
+                prompt=prompt_text,
+                model=args.model,
+                provider=args.provider,
+                agent=args.agent,
+                wait=args.wait,
+                send_timeout=args.send_timeout if args.send_timeout is not None else (None if args.wait else 5.0),
+                wait_poll_interval=args.wait_poll_interval,
+                wait_max_seconds=args.wait_max_seconds,
+            )
+    except DryRunVerificationError as exc:
+        print(f"dry run failed: {exc}", file=sys.stderr)
+        return 2
+    payload = {
+        "session_id": result.session_id,
+        "target_session_id": args.session_id,
+        "status": result.status,
+        "deleted": result.deleted,
+        "wait_completed": result.wait_completed,
+        "dry_run": result.dry_run,
+    }
+    if result.verification:
+        payload["verification"] = result.verification
+    if args.json_out:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(f"session_id: {result.session_id}")
+        print(f"target_session_id: {args.session_id}")
+        print(f"status: {result.status}")
+        print(f"deleted: {str(result.deleted).lower()}")
+        if result.dry_run:
+            print("dry_run: true")
+            print(f"verification: {result.verification}")
+    return 0
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     since_ms = _parse_cutoff_ms(args.since) if args.since else None
     try:
@@ -323,6 +379,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_submit.add_argument("--wait-max-seconds", type=float, default=7200.0)
     p_submit.add_argument("--json", dest="json_out", action="store_true")
     p_submit.set_defaults(func=cmd_submit)
+
+    p_append = sub.add_parser("append", help="append one prompt to an existing OpenCode session")
+    p_append.add_argument("prompt", nargs="?", help="prompt text; use --prompt-file or --stdin for private prompts")
+    p_append.add_argument("--prompt-file", type=Path, help="read prompt text from a UTF-8 file")
+    p_append.add_argument("--stdin", action="store_true", help="read prompt text from standard input")
+    p_append.add_argument("--session-id", required=True, help="existing OpenCode session id to append to")
+    p_append.add_argument("--model", default=os.environ.get("OPENCODE_MODEL", "example/default-model"))
+    p_append.add_argument("--provider", default=os.environ.get("OPENCODE_PROVIDER"))
+    p_append.add_argument("--agent", default=os.environ.get("OPENCODE_AGENT"))
+    p_append.add_argument("--dry-run", action="store_true", help="verify target session and routing without appending the real prompt")
+    p_append.add_argument(
+        "--keep-dry-run-session",
+        action="store_true",
+        help="preserve the ephemeral dry-run session instead of deleting it after verification",
+    )
+    p_append.add_argument("--wait", action="store_true", help="block until the OpenCode session is no longer running")
+    p_append.add_argument("--send-timeout", type=float, default=None)
+    p_append.add_argument("--wait-poll-interval", type=float, default=15.0)
+    p_append.add_argument("--wait-max-seconds", type=float, default=7200.0)
+    p_append.add_argument("--json", dest="json_out", action="store_true")
+    p_append.set_defaults(func=cmd_append)
 
     p_export = sub.add_parser(
         "export", help="export OpenCode sessions to markdown (one file per session)"
