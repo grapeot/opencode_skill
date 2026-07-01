@@ -64,19 +64,31 @@ ORDER BY time_updated DESC
 LIMIT 8;
 ```
 
-For one-shot delayed reminders, combine `append` with the Process Launcher durable scheduler rather than a raw `sleep` or cron entry. Keep the prompt in a stable ignored file, run `append --dry-run`, then schedule the real command through Process Launcher with `delay_seconds` or `run_at`:
+## Same-Session Reminder Workflow
+
+Use this workflow when the user wants the current OpenCode conversation to wake itself up later, such as "in 10 minutes, check this command again". This is different from creating a new OpenCode job. The scheduled action should append a follow-up prompt to the same session.
+
+1. Identify the target session. Prefer an explicit session id. If none is available, infer it from read-only session metadata as described above. Use the inferred session only when directory, title, and recent update time all match the current interaction.
+2. Write the reminder prompt to a stable ignored file, such as `prompts/reminder_<slug>.md`. Do not store scheduled reminder prompts under `tmp/`, because cleanup jobs may delete them before the reminder fires.
+3. Run `append --dry-run` against the target session. This checks credentials, model routing, agent routing, and session reachability without appending the real reminder text.
+4. Schedule the real append through Process Launcher with `delay_seconds` or `run_at`. Prefer non-blocking handoff mode for reminders: use `--send-timeout 5 --json` and do not pass `--wait` unless the user explicitly wants the scheduled process to block until OpenCode completes.
+5. After scheduling, inspect `/scheduled` and record the scheduled job id if the caller needs cancellation or later audit. At fire time, verify both layers when needed: Process Launcher should show whether the append command exited successfully, while the OpenCode session timeline is the source of truth for whether the model actually responded.
+
+The default same-session reminder command should look like this:
 
 ```bash
 curl -X POST http://localhost:7997/run \
   -H 'Content-Type: application/json' \
   -d '{
-    "command": ["/absolute/path/to/opencode_skill/.venv/bin/python", "-m", "opencode_skill", "append", "--session-id", "ses_example", "--prompt-file", "/absolute/path/to/prompts/reminder.md", "--send-timeout", "5"],
+    "command": ["/absolute/path/to/opencode_skill/.venv/bin/python", "-m", "opencode_skill", "append", "--session-id", "ses_example", "--prompt-file", "/absolute/path/to/prompts/reminder.md", "--send-timeout", "5", "--json"],
     "cwd": "/absolute/path/to/opencode_skill",
     "label": "opencode_append_reminder",
     "delay_seconds": 1800,
     "timeout": 300
   }'
 ```
+
+Avoid this common failure mode: appending with `--wait --send-timeout 30` can succeed in the OpenCode session but still make the scheduled process exit non-zero if the HTTP request times out while the model is responding. That leaves Process Launcher marked `failed` even though the user sees the reminder response in the session. For reminders, treat message handoff as the durable scheduler's responsibility and OpenCode response verification as a separate check.
 
 ## Batch Submission Workflow
 
