@@ -196,6 +196,13 @@ class OpenCodeClient:
             return payload["messages"]
         return []
 
+    def get_session_statuses(self) -> dict[str, dict[str, Any]]:
+        """Return the authoritative busy/idle status map for active sessions."""
+        url = f"{self.base_url}/session/status"
+        response = self._session.get(url, headers=self.headers, timeout=10)
+        payload = _json_response("GET", url, response)
+        return payload if isinstance(payload, dict) else {}
+
     def delete_session(self, session_id: str) -> bool:
         url = f"{self.base_url}/session/{session_id}"
         response = self._session.delete(url, headers=self.headers, timeout=10)
@@ -210,10 +217,18 @@ class OpenCodeClient:
         max_wait: float = 7200.0,
     ) -> bool:
         started = time.monotonic()
+        seen_active = False
+        idle_polls = 0
         while time.monotonic() - started < max_wait:
-            info = self.get_session_info(session_id)
-            if not self._session_is_running(info):
-                return True
+            status = self.get_session_statuses().get(session_id) or {}
+            status_type = str(status.get("type") or "idle").lower()
+            if status_type in {"busy", "queued", "pending", "running", "retry"}:
+                seen_active = True
+                idle_polls = 0
+            else:
+                idle_polls += 1
+                if seen_active or idle_polls >= 2:
+                    return True
             self._sleep(poll_interval)
         return False
 
