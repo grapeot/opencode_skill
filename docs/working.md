@@ -4,6 +4,12 @@ This public working log records project-level changes and validation results wit
 
 ## Changelog
 
+### 2026-07-11
+
+- Changed session completion polling to use the authoritative aggregate `/session/status` map instead of per-session metadata that may omit running/status fields.
+- Added a two-idle-poll guard for very fast jobs that may finish before the waiter first observes a busy state.
+- Added offline coverage for busy-to-idle and never-observed-busy completion paths.
+
 ### 2026-05-25
 
 - Broadened the package from data maintenance to a unified OpenCode skill covering HTTP submission, batch submission, QA grouping, and SQLite maintenance.
@@ -56,3 +62,4 @@ This public working log records project-level changes and validation results wit
 - A clean current tree is not enough for public GitHub publication; git history must be scanned and cleaned before pushing.
 - Public logs should record validation categories and outcomes, not real local data or operation transcripts.
 - Deleting a private file in the current tree does not remove it from previous commits.
+- Per-session metadata is not a reliable busy/idle surface for every OpenCode build. Concurrent waiters must use `/session/status`, and higher-level batch orchestrators should add per-job watchdog ceilings so one stuck job cannot hold an entire wave open.

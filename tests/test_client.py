@@ -87,12 +87,34 @@ def test_http_error_body_is_truncated_and_credential_free() -> None:
 
 def test_wait_for_session_complete_polls_until_idle() -> None:
     http = FakeHTTPSession()
-    http.queue(FakeResponse(payload={"running": True}, text='{"running":true}'))
-    http.queue(FakeResponse(payload={"running": False}, text='{"running":false}'))
+    http.queue(FakeResponse(payload={"ses_test": {"type": "busy"}}, text='{"ses_test":{"type":"busy"}}'))
+    http.queue(FakeResponse(payload={}, text="{}"))
     sleeps: list[float] = []
     client = OpenCodeClient(base_url="http://example.test", username="user", password="secret", session=http, load_env=False, sleep=sleeps.append)
 
     assert client.wait_for_session_complete("ses_test", poll_interval=0.25, max_wait=5)
+    assert sleeps == [0.25]
+    assert [call[1] for call in http.calls] == [
+        "http://example.test/session/status",
+        "http://example.test/session/status",
+    ]
+
+
+def test_wait_for_session_complete_requires_two_idle_polls_before_seen_busy() -> None:
+    http = FakeHTTPSession()
+    http.queue(FakeResponse(payload={}, text="{}"))
+    http.queue(FakeResponse(payload={}, text="{}"))
+    sleeps: list[float] = []
+    client = OpenCodeClient(
+        base_url="http://example.test",
+        username="user",
+        password="secret",
+        session=http,
+        load_env=False,
+        sleep=sleeps.append,
+    )
+
+    assert client.wait_for_session_complete("ses_fast", poll_interval=0.25, max_wait=5)
     assert sleeps == [0.25]
 
 

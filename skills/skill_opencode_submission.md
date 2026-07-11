@@ -94,6 +94,8 @@ Avoid this common failure mode: appending with `--wait --send-timeout 30` can su
 
 For batch jobs, run `--dry-run` first. Inspect the manifest and rendered prompts under the configured output root. Use `--smoke-slug` for one real submission before submitting a larger set. Batch session titles must start with `batch-`, which keeps later archive selectors auditable.
 
+When waiting for concurrent jobs, use the server's aggregate `GET /session/status` map as the source of truth for busy/idle state. `GET /session/{id}` may omit reliable running/status fields and can make a caller wait incorrectly or declare completion too early. Long-running orchestrators also need a per-job watchdog; a multi-hour wave-level timeout alone allows one stuck job to block every completed job.
+
 `batch qa` accepts slugs directly or from a prior manifest. Use `--group-size` to control how much work each QA session receives. Generated manifests and rendered prompts are runtime artifacts and should stay out of git.
 
 ## Output Contract
@@ -111,6 +113,8 @@ For batch jobs, run `--dry-run` first. Inspect the manifest and rendered prompts
 - Use `append --dry-run` before scheduling a future append to an existing session.
 - Store scheduled prompt files in an ignored stable `prompts/` directory, not `tmp/`.
 - Use `--dry-run` and `--smoke-slug` before a large batch submission.
+- Poll `GET /session/status` for concurrent wait state; do not infer busy/idle from `GET /session/{id}`.
+- Set a bounded per-job watchdog and handle timed-out jobs through targeted retry rather than blocking an entire wave indefinitely.
 - Never commit `.env`, logs, generated manifests, rendered prompts, exported sessions, or real operation reports.
 - Never print prompt/message body content during a privacy review; report paths and categories instead.
 - Never copy private endpoints, model names, agent names, templates, session IDs, or local paths into this public repo.
