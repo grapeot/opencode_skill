@@ -106,6 +106,28 @@ When waiting for concurrent jobs, use the server's aggregate `GET /session/statu
 
 `batch submit` and `batch qa` write a `batch_manifest.json` and rendered prompt files under the output root. `--dry-run` prints a small JSON summary and avoids network calls.
 
+## Known Traps: Server HTTP API
+
+All traps below were hit and verified against a live `opencode web` server (2026-08). They apply when scripts or agents drive the server HTTP API directly, including through this package's submit/append commands. Check this list before deep-diving a submission failure.
+
+1. **Message-level model must be nested under `model`, never top-level.** A `modelID` key placed at the top level of the message body (as a sibling of `parts`) is silently ignored and the message runs on the default model. The failure mode is misleading: the fallback model's provider may raise an unrelated error (e.g. that provider's expired key). This package's client already nests correctly — `{"parts": [...], "model": {"modelID": ..., "providerID": ...}}` — and that shape is verified working; hand-rolled payloads are where this bites. When in doubt, verify what actually ran via the response's `info.modelID` / `info.providerID`, never the request.
+
+2. **The SPA catch-all returns HTTP 200 + HTML for unknown routes.** The message endpoint in the verified build is `/session/{id}/message` (no `/api` prefix); `/api/session/{id}/message` and other nonexistent routes "succeed" with 200 and serve `index.html`. This package fails loudly here (`response.json()` raises on HTML), but a hand-rolled client that trusts status codes will silently misparse. Confirm the body is JSON before parsing. The route set differs across builds — consult the server's own OpenAPI schema (`GET /doc`) instead of guessing paths.
+
+3. **The model catalog freezes at server startup; auth does not.** The models.dev catalog is cached in memory with an infinite TTL. A model or provider newly listed upstream will not appear until the server restarts. `auth.json`, by contrast, is read per request: a key added while the server is running works immediately for providers already in the catalog.
+
+4. **`OPENCODE_MODELS_PATH` servers never fetch models.dev live.** If the server was started with a local catalog mirror, upstream updates do not flow in. When a newly released model is invisible, debug in order: (a) confirm the provider's own API actually serves it; (b) confirm upstream `https://models.dev/api.json` lists it under the right provider — requests must carry a User-Agent header (bare curl gets 403), and note the catalog endpoint is `/api.json`, not `/models.json`; (c) regenerate the local mirror with whatever script owns it; (d) have the server owner restart it. Never restart a server you did not start.
+
+5. **Catalog-listed providers need `auth.json` only.** For providers like OpenRouter, `~/.local/share/opencode/auth.json` with `{"openrouter": {"type": "api", "key": "..."}}` is sufficient. Adding a provider block in `opencode.json` is unnecessary unless you need custom options.
+
+6. **The flat model list endpoint can under-report.** In the verified build, `/api/model` showed zero models for several connected API-key providers (openrouter, anthropic) while `GET /api/provider/{id}` returned the provider and explicit Model.Ref requests succeeded. Do not conclude a model is unavailable from the list endpoint alone.
+
+7. **Env-file values may carry quotes.** Reading `OPENCODE_PASSWORD=value` with a naive `cut -d= -f2` keeps the literal quotes from the .env file and yields a confusing 401 against a healthy server. This package's dotenv loader already strips quotes; hand-rolled curl/requests code is where this bites.
+
+8. **Some free reasoning models reject small `max_tokens`.** A minimal smoke-test completion with `max_tokens: 100` failed with an upstream bare `{"code":400,"msg":"bad request"}` surfaced as "Provider returned error"; the same request without `max_tokens` (or with a generous value) succeeded. When smoke-testing reasoning models via a provider API, omit `max_tokens` or set it generously.
+
+9. **Bisect provider issues outside OpenCode first.** One direct probe of the provider API (key validation + one minimal completion) separates "key/model problem" from "opencode routing problem" in seconds. Route debugging that way before touching OpenCode config.
+
 ## Safety Rules
 
 - Prefer `--prompt-file` or `--stdin` for private prompts.
