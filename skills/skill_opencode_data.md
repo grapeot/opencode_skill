@@ -79,6 +79,10 @@ By default, CLI selectors expand descendants through the session `parent_id` cha
 
 `export` reads the source database read-only and writes one markdown file per session that has at least one user turn. It returns scanned and exported counts (and the written file paths under `--json`). Each file begins with a YAML frontmatter block carrying `source: opencode` and a `date` field, followed by `## User` and `## Assistant` sections. Subagent fan-out sessions are skipped unless `--include-subagent` is set; `--since` accepts a relative window (e.g. `30d`) or an ISO date. Treat exported markdown as private: it contains prompt and message bodies and must never be committed.
 
+## Reuse an Existing Archive Before Re-exporting
+
+`export` is a manual one-off. Many workspaces already maintain a daily-exported session archive through a separate pipeline (for example a cron that re-exports all sources every morning and rebuilds a semantic index over them). Before running `export` to look up a past session, check whether such an archive already exists in the workspace and read from it. Only run `export` when you need to force-refresh a session that is newer than the archive's last run, and delete the temporary output afterward so you are not left with a duplicate copy. Concretely: search the workspace's archive directory by session title, date, or content first; fall back to a scoped `export --since Nd --out <tmp>` only when the archive is stale.
+
 ## Safety Rules
 
 - Never run `apply` from a vague request without first producing a `plan`.
