@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from .client import OpenCodeClient
+from .client import OpenCodeClient, env_model_provider, resolve_model_ref
 from .jobs import submit_prompt_with_timeout
 
 DEFAULT_RATE_LIMIT_SECONDS = 1.0
@@ -265,8 +265,11 @@ def run(
     paths = make_batch_paths(args.output_root, batch_id)
     ensure_batch_dirs(paths)
 
-    if args.model is None:
-        args.model = default_model()
+    if args.model is None and args.provider is None:
+        env_model, env_provider = env_model_provider()
+        args.model = env_model or default_model()
+        args.provider = env_provider
+    resolve_model_ref(args.model, args.provider)
     if args.model_mode is None:
         args.model_mode = DEFAULT_MODEL_MODE
     if args.agent is None:

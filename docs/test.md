@@ -6,7 +6,7 @@ Tests must not require a real OpenCode server or inspect a user's real OpenCode 
 
 ## Unit and Integration Coverage
 
-HTTP client tests cover Basic auth header construction, missing password handling, create-session parsing, send-message payloads, typed HTTP errors, provider/model inference, and wait polling with injected sleep.
+HTTP client tests cover Basic auth header construction, missing password handling, create-session parsing, send-message payloads, typed HTTP errors, same-source provider/model resolution, and wait polling with injected sleep.
 
 Single-job tests cover prompt-source validation, create/send handoff workflow, append-to-existing-session workflow, explicit wait behavior, default session preservation, optional deletion, handoff timeout status, explicit provider handling, dry-run prompt replacement, OK verification, and failure handling when the assistant response differs from `OK`.
 
@@ -20,7 +20,7 @@ Migration tests cover plan counts, copy and verify behavior, project row co-migr
 
 Query tests cover main-only reads, main plus archive reads, explicit archive exclusion, missing archive databases, time windows, and malformed message JSON.
 
-CLI tests cover stats, plan, confirmation requirements, `--no-delete`, an end-to-end copy/verify/delete flow using temporary databases, `submit` with a prompt file, default handoff behavior, `submit --dry-run`, `append`, `append --dry-run`, and `batch submit --dry-run`.
+CLI tests cover stats, plan, confirmation requirements, `--no-delete`, an end-to-end copy/verify/delete flow using temporary databases, `submit` with a prompt file, default handoff behavior, `submit --dry-run`, `append`, `append --dry-run`, `batch submit --dry-run`, slash `--model` ignoring `OPENCODE_PROVIDER`, rejection of a bare `--model` mixed with env provider, and env-pair defaults when both flags are omitted.
 
 ## Local Verification
 

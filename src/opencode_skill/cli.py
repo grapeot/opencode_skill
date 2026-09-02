@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import batch, export, migrate, query, selector
-from .client import OpenCodeClient
+from .client import ModelRefError, OpenCodeClient, cli_model_provider
 from .jobs import DryRunVerificationError, append_job, read_prompt, submit_dry_run, submit_job
 
 def _load_dotenv(path: Path) -> None:
@@ -185,14 +185,15 @@ def cmd_vacuum(args: argparse.Namespace) -> int:
 
 def cmd_submit(args: argparse.Namespace) -> int:
     prompt_text = read_prompt(prompt=args.prompt, prompt_file=args.prompt_file, use_stdin=args.stdin)
+    model, provider = cli_model_provider(args.model, args.provider)
     client = OpenCodeClient()
     try:
         if args.dry_run:
             result = submit_dry_run(
                 client,
                 title=args.title,
-                model=args.model,
-                provider=args.provider,
+                model=model,
+                provider=provider,
                 agent=args.agent,
                 delete_session=not args.keep_dry_run_session,
                 send_timeout=args.send_timeout,
@@ -204,8 +205,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
                 client,
                 title=args.title,
                 prompt=prompt_text,
-                model=args.model,
-                provider=args.provider,
+                model=model,
+                provider=provider,
                 agent=args.agent,
                 wait=args.wait and not args.no_wait,
                 delete_session=args.delete_session,
@@ -215,6 +216,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
             )
     except DryRunVerificationError as exc:
         print(f"dry run failed: {exc}", file=sys.stderr)
+        return 2
+    except ModelRefError as exc:
+        print(str(exc), file=sys.stderr)
         return 2
     payload = {
         "session_id": result.session_id,
@@ -240,6 +244,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
 
 def cmd_append(args: argparse.Namespace) -> int:
     prompt_text = read_prompt(prompt=args.prompt, prompt_file=args.prompt_file, use_stdin=args.stdin)
+    model, provider = cli_model_provider(args.model, args.provider)
     client = OpenCodeClient()
     try:
         if args.dry_run:
@@ -247,8 +252,8 @@ def cmd_append(args: argparse.Namespace) -> int:
             result = submit_dry_run(
                 client,
                 title=f"append {args.session_id}",
-                model=args.model,
-                provider=args.provider,
+                model=model,
+                provider=provider,
                 agent=args.agent,
                 delete_session=not args.keep_dry_run_session,
                 send_timeout=args.send_timeout,
@@ -260,8 +265,8 @@ def cmd_append(args: argparse.Namespace) -> int:
                 client,
                 session_id=args.session_id,
                 prompt=prompt_text,
-                model=args.model,
-                provider=args.provider,
+                model=model,
+                provider=provider,
                 agent=args.agent,
                 wait=args.wait,
                 send_timeout=args.send_timeout if args.send_timeout is not None else (None if args.wait else 5.0),
@@ -270,6 +275,9 @@ def cmd_append(args: argparse.Namespace) -> int:
             )
     except DryRunVerificationError as exc:
         print(f"dry run failed: {exc}", file=sys.stderr)
+        return 2
+    except ModelRefError as exc:
+        print(str(exc), file=sys.stderr)
         return 2
     payload = {
         "session_id": result.session_id,
@@ -362,8 +370,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_submit.add_argument("--prompt-file", type=Path, help="read prompt text from a UTF-8 file")
     p_submit.add_argument("--stdin", action="store_true", help="read prompt text from standard input")
     p_submit.add_argument("--title", default=os.environ.get("OPENCODE_TITLE", "OpenCode Job"))
-    p_submit.add_argument("--model", default=os.environ.get("OPENCODE_MODEL", "example/default-model"))
-    p_submit.add_argument("--provider", default=os.environ.get("OPENCODE_PROVIDER"))
+    p_submit.add_argument(
+        "--model",
+        default=None,
+        help="model id or provider/model; do not mix a bare id with OPENCODE_PROVIDER from .env",
+    )
+    p_submit.add_argument(
+        "--provider",
+        default=None,
+        help="provider id; required with a bare --model, forbidden with provider/model",
+    )
     p_submit.add_argument("--agent", default=os.environ.get("OPENCODE_AGENT"))
     p_submit.add_argument("--dry-run", action="store_true", help="submit a harmless OK-only prompt instead of the provided prompt")
     p_submit.add_argument(
@@ -385,8 +401,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_append.add_argument("--prompt-file", type=Path, help="read prompt text from a UTF-8 file")
     p_append.add_argument("--stdin", action="store_true", help="read prompt text from standard input")
     p_append.add_argument("--session-id", required=True, help="existing OpenCode session id to append to")
-    p_append.add_argument("--model", default=os.environ.get("OPENCODE_MODEL", "example/default-model"))
-    p_append.add_argument("--provider", default=os.environ.get("OPENCODE_PROVIDER"))
+    p_append.add_argument(
+        "--model",
+        default=None,
+        help="model id or provider/model; do not mix a bare id with OPENCODE_PROVIDER from .env",
+    )
+    p_append.add_argument(
+        "--provider",
+        default=None,
+        help="provider id; required with a bare --model, forbidden with provider/model",
+    )
     p_append.add_argument("--agent", default=os.environ.get("OPENCODE_AGENT"))
     p_append.add_argument("--dry-run", action="store_true", help="verify target session and routing without appending the real prompt")
     p_append.add_argument(
