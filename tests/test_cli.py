@@ -386,3 +386,88 @@ def test_cli_append_dry_run_verifies_target_and_uses_ephemeral_session(tmp_path,
     assert payload["target_session_id"] == "ses_existing"
     assert payload["status"] == "dry_run_ok_deleted"
     assert payload["verification"] == "assistant_replied_ok"
+
+
+def test_cli_submit_slash_model_ignores_env_provider(tmp_path, monkeypatch, capsys):
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Synthetic prompt", encoding="utf-8")
+    sent = {}
+
+    class FakeClient:
+        def create_session(self, _title):
+            return "ses_cli"
+
+        def send_message(self, *_args, **kwargs):
+            sent.update(kwargs)
+            return {"ok": True}
+
+    monkeypatch.setenv("OPENCODE_PROVIDER", "env-provider")
+    monkeypatch.setenv("OPENCODE_MODEL", "env-model")
+    monkeypatch.setattr(cli, "OpenCodeClient", FakeClient)
+
+    rc = cli.main([
+        "submit",
+        "--prompt-file", str(prompt_file),
+        "--title", "Synthetic Job",
+        "--model", "provider/model",
+        "--json",
+    ])
+
+    assert rc == 0
+    json.loads(capsys.readouterr().out)
+    assert sent["provider_id"] == "provider"
+    assert sent["model_id"] == "model"
+
+
+def test_cli_submit_bare_model_without_provider_errors(tmp_path, monkeypatch, capsys):
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Synthetic prompt", encoding="utf-8")
+
+    class FakeClient:
+        def create_session(self, _title):
+            raise AssertionError("should fail before create_session")
+
+    monkeypatch.setenv("OPENCODE_PROVIDER", "env-provider")
+    monkeypatch.setattr(cli, "OpenCodeClient", FakeClient)
+
+    rc = cli.main([
+        "submit",
+        "--prompt-file", str(prompt_file),
+        "--title", "Synthetic Job",
+        "--model", "bare-model",
+    ])
+
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "same source" in err
+    assert "common mistake" in err
+
+
+def test_cli_submit_uses_env_pair_when_flags_omitted(tmp_path, monkeypatch, capsys):
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Synthetic prompt", encoding="utf-8")
+    sent = {}
+
+    class FakeClient:
+        def create_session(self, _title):
+            return "ses_env"
+
+        def send_message(self, *_args, **kwargs):
+            sent.update(kwargs)
+            return {"ok": True}
+
+    monkeypatch.setenv("OPENCODE_MODEL", "env-model")
+    monkeypatch.setenv("OPENCODE_PROVIDER", "env-provider")
+    monkeypatch.setattr(cli, "OpenCodeClient", FakeClient)
+
+    rc = cli.main([
+        "submit",
+        "--prompt-file", str(prompt_file),
+        "--title", "Synthetic Job",
+        "--json",
+    ])
+
+    assert rc == 0
+    json.loads(capsys.readouterr().out)
+    assert sent["provider_id"] == "env-provider"
+    assert sent["model_id"] == "env-model"

@@ -36,6 +36,20 @@ class OpenCodeConfigError(OpenCodeError):
     """Raised when required client configuration is missing."""
 
 
+class ModelRefError(OpenCodeError):
+    """Raised when provider and model are incomplete or mixed across sources."""
+
+
+_MODEL_REF_HELP = """Incomplete model routing: provider and model must come from the same source.
+
+This is a common mistake. Passing --model <id> does not take OPENCODE_PROVIDER from .env.
+
+Use one complete pair:
+  --model example/default-model
+  --model default-model --provider example
+  omit both flags and set OPENCODE_MODEL in .env (provider/model, or a bare id plus OPENCODE_PROVIDER)"""
+
+
 @dataclass(frozen=True)
 class OpenCodeHTTPError(OpenCodeError):
     method: str
@@ -70,14 +84,43 @@ def env_float(name: str, default: float) -> float:
     return float(value)
 
 
-def infer_provider(model: str, provider: str | None = None) -> tuple[str | None, str]:
-    if provider:
-        return provider, model
-    if "/" in model:
-        inferred_provider, model_id = model.split("/", 1)
-        return inferred_provider, model_id
-    env_provider = os.environ.get("OPENCODE_PROVIDER") or os.environ.get("OPENCODE_DEFAULT_PROVIDER")
-    return env_provider, model
+def env_model_provider() -> tuple[str | None, str | None]:
+    return (
+        os.environ.get("OPENCODE_MODEL"),
+        os.environ.get("OPENCODE_PROVIDER") or os.environ.get("OPENCODE_DEFAULT_PROVIDER"),
+    )
+
+
+def cli_model_provider(model: str | None, provider: str | None) -> tuple[str | None, str | None]:
+    if model is None and provider is None:
+        return env_model_provider()
+    return model, provider
+
+
+def resolve_model_ref(model: str | None, provider: str | None = None) -> tuple[str, str]:
+    model_value = (model or "").strip() or None
+    provider_value = (provider or "").strip() or None
+    if not model_value:
+        raise ModelRefError(_MODEL_REF_HELP)
+    if provider_value:
+        if "/" in model_value:
+            raise ModelRefError(
+                "Provider was specified twice. Use either --model provider/model "
+                "or --model <id> --provider <provider>, not both.\n\n" + _MODEL_REF_HELP
+            )
+        return provider_value, model_value
+    if "/" not in model_value:
+        raise ModelRefError(_MODEL_REF_HELP)
+    inferred_provider, model_id = model_value.split("/", 1)
+    inferred_provider = inferred_provider.strip()
+    model_id = model_id.strip()
+    if not inferred_provider or not model_id:
+        raise ModelRefError(_MODEL_REF_HELP)
+    return inferred_provider, model_id
+
+
+def infer_provider(model: str | None, provider: str | None = None) -> tuple[str, str]:
+    return resolve_model_ref(model, provider)
 
 
 def _response_body(response: ResponseLike, limit: int = 500) -> str:
@@ -156,7 +199,7 @@ class OpenCodeClient:
         agent: str | None = None,
         timeout: float | None = None,
     ) -> Any:
-        provider, model = infer_provider(model_id, provider_id)
+        provider, model = resolve_model_ref(model_id, provider_id)
         model_payload: dict[str, str] = {"modelID": model}
         if provider:
             model_payload["providerID"] = provider

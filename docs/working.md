@@ -4,6 +4,12 @@ This public working log records project-level changes and validation results wit
 
 ## Changelog
 
+### 2026-09-02
+
+- Provider and model now have to come from the same source. A bare `--model` no longer picks up `OPENCODE_PROVIDER` from `.env`.
+- CLI `--model` / `--provider` no longer default from env; omitting both flags uses the env pair, and a `provider/model` string is a complete CLI pair by itself.
+- Added offline coverage for slash-model vs env-provider, bare-model rejection, and env-only defaults.
+
 ### 2026-07-11
 
 - Changed session completion polling to use the authoritative aggregate `/session/status` map instead of per-session metadata that may omit running/status fields.

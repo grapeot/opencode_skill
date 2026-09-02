@@ -34,6 +34,8 @@ All commands run from the project root.
 .venv/bin/python -m opencode_skill batch qa --slugs alpha,beta --output-root tmp/batch_runs --group-size 2 --dry-run
 ```
 
+`--model` and `--provider` must be a complete pair from one source. Pass `--model example/default-model`, or `--model default-model --provider example`. Omitting both flags uses `.env`. A bare `--model` does not take `OPENCODE_PROVIDER` from `.env`.
+
 ## Single Submission Workflow
 
 For one-off jobs, prefer `--prompt-file` or `--stdin` over inline prompt text. Run `submit --dry-run` before scheduling or otherwise delaying a real submission; it sends only a built-in OK prompt, verifies the assistant response, and deletes the dry-run session by default.

@@ -44,7 +44,7 @@ Submission configuration:
 - `OPENCODE_USERNAME`: Basic auth username
 - `OPENCODE_PASSWORD`: Basic auth password
 - `OPENCODE_MODEL`: optional default model or provider/model pair
-- `OPENCODE_PROVIDER`: optional default provider
+- `OPENCODE_PROVIDER`: optional default provider for a bare `OPENCODE_MODEL`; ignored when `--model` or `--provider` is passed on the CLI
 - `OPENCODE_AGENT`: optional default agent
 - `OPENCODE_MESSAGE_TIMEOUT`: HTTP timeout for sending messages
 
@@ -76,7 +76,7 @@ The client should raise typed exceptions with HTTP status and response body snip
 
 Default behavior should be safe for automation and auditability: preserve sessions unless `--delete-session` is passed, and do not block on long-running OpenCode work. If the HTTP message request times out during handoff, the command should still return the created session ID with `status=submitted_timeout`; this lets schedulers treat session creation as the durable handoff boundary. A user can choose `--wait` for blocking jobs.
 
-Model strings can be passed as `provider/model` or as a model ID with a separate `--provider`. Provider inference is a convenience only; explicit provider wins.
+Provider and model must come from the same source. Omit both `--model` and `--provider` to use `.env` (`OPENCODE_MODEL` as `provider/model`, or a bare id plus `OPENCODE_PROVIDER`). Pass a complete CLI pair instead: `--model provider/model`, or `--model <id> --provider <provider>`. A bare `--model` does not take `OPENCODE_PROVIDER` from `.env`; that mix is rejected. Do not pass `--provider` together with a `provider/model` string.
 
 `submit --dry-run` validates the same HTTP submission path while replacing the user's prompt with a built-in harmless prompt. The flow is:
 

@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import base64
-import os
 from typing import Any
 
 import pytest
 
-from opencode_skill.client import OpenCodeClient, OpenCodeConfigError, OpenCodeHTTPError, infer_provider
+from opencode_skill.client import (
+    ModelRefError,
+    OpenCodeClient,
+    OpenCodeConfigError,
+    OpenCodeHTTPError,
+    cli_model_provider,
+    infer_provider,
+    resolve_model_ref,
+)
 
 
 class FakeResponse:
@@ -121,12 +128,17 @@ def test_wait_for_session_complete_requires_two_idle_polls_before_seen_busy() ->
 def test_provider_inference() -> None:
     assert infer_provider("provider/model") == ("provider", "model")
     assert infer_provider("model", "explicit") == ("explicit", "model")
-    old = os.environ.get("OPENCODE_PROVIDER")
-    os.environ["OPENCODE_PROVIDER"] = "env-provider"
-    try:
-        assert infer_provider("model") == ("env-provider", "model")
-    finally:
-        if old is None:
-            os.environ.pop("OPENCODE_PROVIDER", None)
-        else:
-            os.environ["OPENCODE_PROVIDER"] = old
+    with pytest.raises(ModelRefError, match="same source"):
+        infer_provider("model")
+    with pytest.raises(ModelRefError, match="specified twice"):
+        infer_provider("provider/model", "explicit")
+
+
+def test_cli_model_provider_does_not_mix_env_provider_with_cli_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENCODE_MODEL", "env-model")
+    monkeypatch.setenv("OPENCODE_PROVIDER", "env-provider")
+    assert cli_model_provider(None, None) == ("env-model", "env-provider")
+    assert cli_model_provider("provider/model", None) == ("provider/model", None)
+    assert resolve_model_ref(*cli_model_provider("provider/model", None)) == ("provider", "model")
+    with pytest.raises(ModelRefError, match="same source"):
+        resolve_model_ref(*cli_model_provider("bare-model", None))
