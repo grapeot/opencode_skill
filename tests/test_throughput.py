@@ -244,6 +244,7 @@ def test_cli_throughput_json(tmp_path, empty_template_db, capsys):
 
 
 def test_cli_throughput_report(tmp_path, empty_template_db, capsys):
+    pytest.importorskip("matplotlib")
     db = _mk_db(tmp_path, "main.db", empty_template_db)
     _seed_throughput(
         db,
