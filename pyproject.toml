@@ -15,6 +15,9 @@ opencode-skill = "opencode_skill.cli:main"
 dev = [
     "pytest>=8.3,<9",
 ]
+chart = [
+    "matplotlib>=3.9,<4",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -28,6 +28,10 @@ src/opencode_skill/migrate.py
 src/opencode_skill/query.py
   read-only query helpers for analytics and stats across source + archives
 
+src/opencode_skill/throughput.py
+  read-only effective-throughput measurement (tokens/s) per provider/model,
+  percentile aggregation, and Markdown/box-plot report rendering
+
 src/opencode_skill/cli.py
   thin argparse entrypoint for humans and AI agents
 ```
@@ -192,6 +196,12 @@ The query layer parses message JSON in Python rather than relying on SQLite JSON
 
 The output format is a stable contract for date-indexed downstream consumers rather than an internal dump. Each file opens with a YAML frontmatter block that always includes `source: opencode` and a `date` field (the session creation date), followed by `## User` and `## Assistant` section headers. A consumer can therefore select sessions by date and split turns by header without reading the database. The export module owns its own small markdown renderer and filename helpers so the public repository carries no dependency on any private export pipeline.
 
+## Throughput Measurement
+
+`measure_throughput` reads the main database (and any existing archives) read-only and computes effective output throughput per provider/model. For each assistant message it derives `(output + reasoning tokens) / generation duration`. Duration is `time.completed - time.created`; when a message ended with `finish == "tool-calls"` the duration is truncated at the earliest tool `state.time.start`, so tool execution time is not counted as inference. Prefill is included, making the result an effective end-to-end rate rather than pure decode speed.
+
+Samples are filtered to a sane duration band (`[0.2s, 3600s]`) and to a minimum output+reasoning token count to keep the ratio stable. Per-model results are P10/P25/P50/P75/P90 plus min/max and total output tokens. A `percentile` helper implements linear interpolation. The module also owns a small Markdown report renderer and an optional matplotlib box-plot renderer (behind the `chart` extra); the CLI degrades gracefully to a stderr hint when matplotlib is absent.
+
 ## CLI Surface
 
 ```bash
@@ -211,6 +221,9 @@ python -m opencode_skill apply --selector ids --file session_ids.txt --dest ~/.l
 python -m opencode_skill apply --selector title --prefix batch- --dest ~/.local/share/opencode/opencode_archive.db --confirm --no-delete
 python -m opencode_skill vacuum-main --confirm
 python -m opencode_skill export --out tmp/sessions --since 30d --dry-run
+python -m opencode_skill throughput --since 30d --top 15
+python -m opencode_skill throughput --provider example --since 30d --json
+python -m opencode_skill throughput --since 30d --top 15 --out tmp/throughput_report.md
 ```
 
 Global path options:
@@ -238,7 +251,7 @@ For real maintenance, run against a backup or disposable copy first. Stop OpenCo
 
 ## Test Strategy
 
-The offline test suite uses a schema-only fixture database, synthetic rows, fake HTTP sessions, and fake OpenCode clients. It should cover client auth and payloads, single-job preserve/delete behavior, batch rendering, manifests, dry-run network avoidance, send timeouts, selector behavior, read-only connections, copy/verify/delete migration semantics, idempotency, descendant expansion, query aggregation across main plus archive databases, and session export rendering and filtering.
+The offline test suite uses a schema-only fixture database, synthetic rows, fake HTTP sessions, and fake OpenCode clients. It should cover client auth and payloads, single-job preserve/delete behavior, batch rendering, manifests, dry-run network avoidance, send timeouts, selector behavior, read-only connections, copy/verify/delete migration semantics, idempotency, descendant expansion, query aggregation across main plus archive databases, session export rendering and filtering, and throughput percentile aggregation, tool-call duration truncation, filtering, report/chart rendering, and CLI wiring.
 
 Manual validation against a real OpenCode installation is intentionally outside CI and must not write real session content into repository files.
 

@@ -1,12 +1,12 @@
 # OpenCode Skill
 
-OpenCode Skill is a local-first CLI and agent skill for submitting work to a user-controlled OpenCode HTTP server and maintaining OpenCode's SQLite data afterward. It supports single prompt submission, appending a follow-up prompt to an existing session, template-driven batch submission, batch QA grouping, read-only stats, plan-before-apply archiving, and database compaction.
+OpenCode Skill is a local-first CLI and agent skill for submitting work to a user-controlled OpenCode HTTP server and maintaining OpenCode's SQLite data afterward. It supports single prompt submission, appending a follow-up prompt to an existing session, template-driven batch submission, batch QA grouping, read-only stats, plan-before-apply archiving, database compaction, and per-provider/model inference throughput measurement.
 
 This repository is designed to be publishable with only fake examples. Runtime data, `.env`, logs, generated manifests, rendered prompts, archive databases, and real operational notes must stay outside git.
 
 ## Install
 
-Hand this repository URL to an AI coding agent and ask it to install the skill in your workspace. The agent should start from your workspace `AGENTS.md`, `CLAUDE.md`, or equivalent instructions, then add the relevant public skill files to your skill discovery chain: `skills/skill_opencode_submission.md` for prompt submission and batch work, `skills/skill_opencode_data.md` for SQLite data maintenance, and `skills/skill_opencode_periodic_job.md` for recurring cron jobs.
+Hand this repository URL to an AI coding agent and ask it to install the skill in your workspace. The agent should start from your workspace `AGENTS.md`, `CLAUDE.md`, or equivalent instructions, then add the relevant public skill files to your skill discovery chain: `skills/skill_opencode_submission.md` for prompt submission and batch work, `skills/skill_opencode_data.md` for SQLite data maintenance, `skills/skill_opencode_throughput.md` for inference throughput measurement, and `skills/skill_opencode_periodic_job.md` for recurring cron jobs.
 
 For a direct local install:
 

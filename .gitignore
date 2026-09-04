@@ -21,6 +21,10 @@ opencode_batches/
 **/slugs/*.log
 **/groups/*_report.md
 
+# Throughput report default output (private, keep out of git)
+tmp/throughput_report.md
+tmp/throughput_chart.png
+
 # Local SQLite snapshots / fixtures generated during dev
 *.db
 *.db-shm
