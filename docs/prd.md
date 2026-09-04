@@ -58,6 +58,8 @@ This project does not start or stop OpenCode servers, define project-specific pr
 
 Query helpers should make accounting complete by default: analytics callers include archives unless they explicitly opt out. Export callers can request source-only behavior when they want archived sessions excluded.
 
+`throughput` is always read-only. It measures effective output throughput per provider/model as `(output + reasoning tokens) / generation duration`, where duration is `time.completed - time.created` truncated at the first tool-call start when a message ended with tool-calls. Prefill is included, so results are effective end-to-end rates rather than pure decode speed. It reports P10/P25/P50/P75/P90 plus min/max and total output tokens, and can emit a Markdown report with an embedded box-plot chart (via an optional `matplotlib` extra) or a JSON array. Reports and charts are private runtime artifacts that stay out of git.
+
 ## Safety Requirements
 
 Any destructive command must require explicit confirmation. A failed copy or verification step must not remove source data. Selectors must be auditable from command arguments and plan output. Real production use should run against a backup or test copy before touching a user's primary OpenCode database.

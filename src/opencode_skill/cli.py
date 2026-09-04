@@ -9,7 +9,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import batch, export, migrate, query, selector
+from . import batch, export, migrate, query, selector, throughput
 from .client import ModelRefError, OpenCodeClient, cli_model_provider
 from .jobs import DryRunVerificationError, append_job, read_prompt, submit_dry_run, submit_job
 
@@ -323,6 +323,63 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_throughput(args: argparse.Namespace) -> int:
+    if not args.main.exists():
+        print(f"main database not found: {args.main}", file=sys.stderr)
+        return 1
+    if args.top is not None and args.top < 1:
+        print("--top must be a positive integer", file=sys.stderr)
+        return 2
+    since_ms = _parse_cutoff_ms(args.since) if args.since else None
+    archive_dbs = [] if args.main_only else [args.archive, args.old_archive]
+    results = throughput.measure_throughput(
+        args.main,
+        archive_dbs,
+        since_ms=since_ms,
+        min_output=args.min_output,
+        provider=args.provider,
+        model=args.model,
+        include_archive=not args.main_only,
+    )
+    if args.top is not None:
+        results = results[: args.top]
+    if args.json_out:
+        print(json.dumps([r.to_dict() for r in results], indent=2))
+        return 0
+    if not results:
+        print("no throughput samples found")
+        return 0
+    since_label = args.since if args.since else "all time"
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        chart_embed: str | None = None
+        if not args.no_chart:
+            chart_file = args.out.parent / "throughput_chart.png"
+            try:
+                throughput.render_chart(results, chart_file)
+                chart_embed = chart_file.name
+            except ImportError:
+                print(
+                    "matplotlib not installed; skipping chart (uv pip install matplotlib)",
+                    file=sys.stderr,
+                )
+        report = throughput.render_markdown_report(
+            results,
+            since_label=since_label,
+            min_output=args.min_output,
+            chart_path=chart_embed,
+            top=args.top,
+        )
+        args.out.write_text(report, encoding="utf-8")
+        print(f"report written: {args.out}")
+    print(
+        throughput.render_markdown_report(
+            results, since_label=since_label, min_output=args.min_output, top=args.top
+        )
+    )
+    return 0
+
+
 def cmd_batch(args: argparse.Namespace) -> int:
     try:
         batch.validate_args(args)
@@ -447,6 +504,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_export.add_argument("--json", dest="json_out", action="store_true")
     p_export.set_defaults(func=cmd_export)
+
+    p_tp = sub.add_parser(
+        "throughput", help="measure effective inference throughput (tokens/s) per provider/model"
+    )
+    p_tp.add_argument("--provider", default=None, help="filter to one provider id")
+    p_tp.add_argument("--model", default=None, help="filter to one model id")
+    p_tp.add_argument("--since", help="only messages created after this cutoff (e.g. '30d' or '2026-04-09')")
+    p_tp.add_argument("--min-output", type=int, default=50, help="min output+reasoning tokens for a sample to count (default 50)")
+    p_tp.add_argument("--top", type=int, default=None, help="limit all output (JSON, report, chart) to the top N models by sample count")
+    p_tp.add_argument("--main-only", action="store_true", help="ignore archive DBs")
+    p_tp.add_argument("--out", type=Path, default=Path("tmp/throughput_report.md"), help="write a Markdown report (and chart) to this path (default: tmp/throughput_report.md)")
+    p_tp.add_argument("--no-chart", action="store_true", help="skip the matplotlib chart when writing --out")
+    p_tp.add_argument("--json", dest="json_out", action="store_true")
+    p_tp.set_defaults(func=cmd_throughput)
 
     p_batch = sub.add_parser("batch", help="render and submit batch OpenCode jobs")
     batch.add_arguments(p_batch)
