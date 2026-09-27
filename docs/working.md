@@ -4,6 +4,10 @@ This public working log records project-level changes and validation results wit
 
 ## Changelog
 
+### 2026-09-26
+
+- Clarified that scheduler dry-runs must match the future process working directory and credential source, and that persisted job metadata must be checked before reporting success.
+
 ### 2026-09-02
 
 - Provider and model now have to come from the same source. A bare `--model` no longer picks up `OPENCODE_PROVIDER` from `.env`.
