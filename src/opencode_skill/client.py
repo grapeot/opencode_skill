@@ -103,11 +103,10 @@ def resolve_model_ref(model: str | None, provider: str | None = None) -> tuple[s
     if not model_value:
         raise ModelRefError(_MODEL_REF_HELP)
     if provider_value:
-        if "/" in model_value:
-            raise ModelRefError(
-                "Provider was specified twice. Use either --model provider/model "
-                "or --model <id> --provider <provider>, not both.\n\n" + _MODEL_REF_HELP
-            )
+        # An explicit provider makes the model id authoritative and literal,
+        # including ids that contain slashes (e.g. Hugging Face "org/name").
+        # Returning it verbatim keeps resolution idempotent, so the internal
+        # re-resolve in send_message does not rewrite the model id.
         return provider_value, model_value
     if "/" not in model_value:
         raise ModelRefError(_MODEL_REF_HELP)

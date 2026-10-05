@@ -22,7 +22,7 @@ Then edit `.env` for your local OpenCode server and database paths. The example 
 
 ## Configure
 
-Submission uses `OPENCODE_BASE_URL`, `OPENCODE_USERNAME`, `OPENCODE_PASSWORD`, and optional model/agent variables from `.env` or the process environment. Provider and model must come from the same source: omit both CLI flags to use `.env`, or pass `--model example/default-model` / `--model default-model --provider example`. A bare `--model` does not take `OPENCODE_PROVIDER` from `.env`. Prefer `--prompt-file` or `--stdin` for private prompts so shell history does not capture sensitive text.
+Submission uses `OPENCODE_BASE_URL`, `OPENCODE_USERNAME`, `OPENCODE_PASSWORD`, and optional model/agent variables from `.env` or the process environment. Provider and model must come from the same source: omit both CLI flags to use `.env`, or pass `--model example/default-model` / `--model default-model --provider example`. A bare `--model` does not take `OPENCODE_PROVIDER` from `.env`. Model ids may contain slashes: in `--model provider/model` only the first segment is the provider, so Hugging Face `org/name` ids such as `--model huggingface/example-org/example-model` work. Prefer `--prompt-file` or `--stdin` for private prompts so shell history does not capture sensitive text.
 
 Database maintenance defaults follow OpenCode's common local data layout under `~/.local/share/opencode/`. You can override them with CLI flags or environment variables documented in `.env.example`.
 

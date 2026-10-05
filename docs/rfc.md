@@ -80,7 +80,9 @@ The client should raise typed exceptions with HTTP status and response body snip
 
 Default behavior should be safe for automation and auditability: preserve sessions unless `--delete-session` is passed, and do not block on long-running OpenCode work. If the HTTP message request times out during handoff, the command should still return the created session ID with `status=submitted_timeout`; this lets schedulers treat session creation as the durable handoff boundary. A user can choose `--wait` for blocking jobs.
 
-Provider and model must come from the same source. Omit both `--model` and `--provider` to use `.env` (`OPENCODE_MODEL` as `provider/model`, or a bare id plus `OPENCODE_PROVIDER`). Pass a complete CLI pair instead: `--model provider/model`, or `--model <id> --provider <provider>`. A bare `--model` does not take `OPENCODE_PROVIDER` from `.env`; that mix is rejected. Do not pass `--provider` together with a `provider/model` string.
+Provider and model must come from the same source. Omit both `--model` and `--provider` to use `.env` (`OPENCODE_MODEL` as `provider/model`, or a bare id plus `OPENCODE_PROVIDER`). Pass a complete CLI pair instead: `--model provider/model`, or `--model <id> --provider <provider>`. A bare `--model` does not take `OPENCODE_PROVIDER` from `.env`; that mix is rejected.
+
+Model ids may themselves contain slashes (for example Hugging Face `org/name` ids such as `huggingface/example-org/example-model`). When a `provider/model` string is given, only the first segment is the provider and the remainder is the model. When an explicit `--provider` is supplied with a model id, the model id is taken verbatim and may contain slashes; resolution is idempotent because a supplied provider is returned unchanged (the CLI resolves the pair once, then the client resolves it again before sending). Consequently `--model openai/gpt-4 --provider anthropic` treats `openai/gpt-4` as a literal model id for provider `anthropic`; there is no longer a "provider specified twice" error.
 
 `submit --dry-run` validates the same HTTP submission path while replacing the user's prompt with a built-in harmless prompt. The flow is:
 

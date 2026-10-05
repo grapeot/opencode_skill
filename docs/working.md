@@ -4,6 +4,10 @@ This public working log records project-level changes and validation results wit
 
 ## Changelog
 
+### 2026-10-05
+
+- Fixed model/provider resolution for model ids that contain slashes (Hugging Face `org/name` ids). `--model provider/model` now parses only the first segment as the provider, and an explicit `--provider` takes the model id verbatim (slashes allowed) instead of raising "provider specified twice". Because a supplied provider is returned unchanged, resolving an already-resolved pair is a no-op, so the internal re-resolve in `send_message` no longer rewrites or rejects these ids.
+
 ### 2026-09-26
 
 - Clarified that scheduler dry-runs must match the future process working directory and credential source, and that persisted job metadata must be checked before reporting success.
