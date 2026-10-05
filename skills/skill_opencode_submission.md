@@ -92,7 +92,7 @@ curl -X POST http://localhost:7997/run \
   }'
 ```
 
-Avoid this common failure mode: appending with `--wait --send-timeout 30` can succeed in the OpenCode session but still make the scheduled process exit non-zero if the HTTP request times out while the model is responding. That leaves Process Launcher marked `failed` even though the user sees the reminder response in the session. For reminders, treat message handoff as the durable scheduler's responsibility and OpenCode response verification as a separate check.
+For reminders, do not pass `--wait`: the default handoff is fire-and-forget and returns as soon as the server accepts the prompt, so the scheduled process reports success on acceptance. A failure before acceptance exits non-zero with the original error and no success-looking status. Treat handoff as the scheduler's responsibility and OpenCode response verification as a separate check. Only use `--wait` when the caller genuinely needs to block until the session is idle, and give it a `--send-timeout` generous enough for the model's first response.
 
 ## Batch Submission Workflow
 
@@ -104,7 +104,7 @@ When waiting for concurrent jobs, use the server's aggregate `GET /session/statu
 
 ## Output Contract
 
-`submit` prints the session ID, status, deletion state, and dry-run state, or a JSON object with the same fields when `--json` is passed. Default handoff statuses include `submitted`, `submitted_timeout`, and `submitted_unconfirmed`; all preserve the session ID for follow-up. For `submit --dry-run`, success means the assistant response was exactly `OK`.
+`submit` prints the session ID, status, deletion state, and dry-run state, or a JSON object with the same fields when `--json` is passed. The default handoff status is `submitted` (the server accepted the prompt); `--wait` yields `completed` or `wait_timeout`. A failure before acceptance is not reported as a status — it surfaces as a non-zero exit with the original error on stderr. For `submit --dry-run`, success means the assistant response was exactly `OK`.
 
 `append` prints the target session ID, status, and dry-run state. For real appends, `session_id` is the target session. For `append --dry-run`, `session_id` is the ephemeral dry-run session and `target_session_id` is the session that was checked.
 
@@ -123,6 +123,8 @@ All traps below were hit and verified against a live `opencode web` server (2026
 4. **The flat model list endpoint can under-report.** In the verified build, `/api/model` showed zero models for several connected API-key providers (openrouter, anthropic) while `GET /api/provider/{id}` returned the provider and explicit model references succeeded. Do not conclude a model is unavailable from the list endpoint alone.
 
 5. **Bisect provider issues outside OpenCode first.** One direct probe of the provider API (key validation + one minimal completion) separates "key/model problem" from "opencode routing problem" in seconds. Route debugging that way before touching OpenCode config.
+
+6. **`prompt_async` accepts without validating the model or agent.** The fire-and-forget endpoint checks that the session exists, then forks the prompt and returns `204` immediately; the client never learns whether the model or agent resolved. An unknown provider or agent still returns `204`, so a zero exit code and `status=submitted` prove the prompt was queued, not that it was valid or that it ran. A `--dry-run` (which uses the blocking endpoint and requires an `OK` reply) is the real preflight for a new model/agent.
 
 ## Safety Rules
 

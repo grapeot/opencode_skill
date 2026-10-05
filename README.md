@@ -41,7 +41,7 @@ Single submission:
 
 Use `submit --dry-run` before putting a future submission behind a scheduler. It validates the server, credentials, model, provider, and agent path by sending a built-in harmless prompt that must return exactly `OK`; it does not send the prompt file content and deletes the dry-run session by default.
 
-Real `submit` returns after handoff by default and preserves the session for auditability. Use `--wait` only when the caller intentionally wants to block until OpenCode reports the session is no longer running.
+Real `submit` returns after handoff by default and preserves the session for auditability. The handoff uses the server's fire-and-forget `prompt_async` endpoint, so a failure before the prompt is accepted exits non-zero with the original error rather than reporting a success-looking status; acceptance means queued, not completed. Use `--wait` only when the caller intentionally wants to block until OpenCode reports the session is no longer running.
 
 Append to an existing session:
 

@@ -214,7 +214,7 @@ def build_submit_manifest(
     entries: list[dict[str, Any]],
 ) -> dict[str, Any]:
     failed = sum(1 for item in entries if item.get("status") == "failed")
-    submitted = sum(1 for item in entries if item.get("status") in {"submitted", "submitted_unconfirmed", "submitted_timeout", "completed"})
+    submitted = sum(1 for item in entries if item.get("status") in {"submitted", "completed"})
     verify_passed = sum(1 for item in entries if item.get("verify", {}).get("has_assistant_message"))
     return {
         "batch_id": batch_id,
@@ -250,7 +250,7 @@ def build_qa_manifest(
         "summary": {
             "total_groups": len(groups),
             "total_slugs": sum(len(group.get("slugs", [])) for group in groups),
-            "submitted": sum(1 for group in groups if group.get("status") in {"submitted", "completed", "dry_run", "submitted_unconfirmed", "submitted_timeout"}),
+            "submitted": sum(1 for group in groups if group.get("status") in {"submitted", "completed", "dry_run"}),
             "failed": sum(1 for group in groups if group.get("status") == "failed"),
         },
     }

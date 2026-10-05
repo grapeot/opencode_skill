@@ -222,6 +222,51 @@ class OpenCodeClient:
             return {"status": "accepted_empty_response", "session_id": session_id}
         return {"status": "accepted_empty_response_unconfirmed", "session_id": session_id}
 
+    def send_message_async(
+        self,
+        session_id: str,
+        message: str,
+        *,
+        model_id: str,
+        provider_id: str | None = None,
+        agent: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        """Hand a prompt off and return as soon as the server accepts it.
+
+        Uses the server's fire-and-forget ``prompt_async`` endpoint, which
+        returns ``204 No Content`` immediately and runs the prompt in the
+        background. Unlike the blocking ``send_message`` this needs no worker
+        thread, so any failure before acceptance (non-2xx, connection failure,
+        local model-ref rejection) propagates to the caller instead of being
+        swallowed.
+
+        Acceptance (204) only means the session exists and the prompt was
+        queued. The server does not validate the model or agent before
+        returning 204, so an unknown provider or agent still yields 204 and
+        fails later in the background. Acceptance does not mean the prompt is
+        valid or that it ran; callers that need completion must poll
+        separately.
+        """
+        provider, model = resolve_model_ref(model_id, provider_id)
+        model_payload: dict[str, str] = {"modelID": model}
+        if provider:
+            model_payload["providerID"] = provider
+        payload: dict[str, Any] = {
+            "parts": [{"type": "text", "text": message}],
+            "model": model_payload,
+        }
+        if agent:
+            payload["agent"] = agent
+        url = f"{self.base_url}/session/{session_id}/prompt_async"
+        response = self._session.post(
+            url,
+            json=payload,
+            headers=self.headers,
+            timeout=self.message_timeout if timeout is None else timeout,
+        )
+        _raise_for_status("POST", url, response)
+
     def get_session_info(self, session_id: str) -> dict[str, Any]:
         url = f"{self.base_url}/session/{session_id}"
         response = self._session.get(url, headers=self.headers, timeout=10)

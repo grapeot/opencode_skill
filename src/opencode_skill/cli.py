@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import batch, export, migrate, query, selector, throughput
-from .client import ModelRefError, OpenCodeClient, cli_model_provider
+from .client import ModelRefError, OpenCodeClient, OpenCodeError, cli_model_provider
 from .jobs import DryRunVerificationError, append_job, read_prompt, submit_dry_run, submit_job
 
 def _load_dotenv(path: Path) -> None:
@@ -220,6 +220,12 @@ def cmd_submit(args: argparse.Namespace) -> int:
     except ModelRefError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    except OpenCodeError as exc:
+        # Handoff calls the server synchronously, so a failure before the
+        # prompt is accepted surfaces here instead of being swallowed. Report
+        # the original error and exit non-zero.
+        print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        return 3
     payload = {
         "session_id": result.session_id,
         "title": result.title,
@@ -279,6 +285,9 @@ def cmd_append(args: argparse.Namespace) -> int:
     except ModelRefError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    except OpenCodeError as exc:
+        print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        return 3
     payload = {
         "session_id": result.session_id,
         "target_session_id": args.session_id,
@@ -446,8 +455,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_submit.add_argument("--wait", action="store_true", help="block until the OpenCode session is no longer running")
     p_submit.add_argument("--no-wait", action="store_true", help="deprecated compatibility flag; submit already returns after handoff by default")
-    p_submit.add_argument("--delete-session", action="store_true", help="delete the session after submission/wait completes")
-    p_submit.add_argument("--send-timeout", type=float, default=None)
+    p_submit.add_argument(
+        "--delete-session",
+        action="store_true",
+        help="delete the session after submission/wait completes; without --wait this can delete it before the background prompt finishes",
+    )
+    p_submit.add_argument(
+        "--send-timeout",
+        type=float,
+        default=None,
+        help="seconds to wait for the server to accept the handoff (not for the response); default 5 when not --wait",
+    )
     p_submit.add_argument("--wait-poll-interval", type=float, default=15.0)
     p_submit.add_argument("--wait-max-seconds", type=float, default=7200.0)
     p_submit.add_argument("--json", dest="json_out", action="store_true")

@@ -6,6 +6,7 @@ This public working log records project-level changes and validation results wit
 
 ### 2026-10-05
 
+- Handoff now uses the server's fire-and-forget `prompt_async` endpoint instead of a worker thread around the blocking `/message` call. Failures before acceptance raise to the caller and exit non-zero instead of being swallowed into a success-looking `submitted_unconfirmed`/`submitted_timeout` status; `send_timeout` now bounds only the acceptance request. `--wait` still blocks via session-status polling. Batch records such failures as `failed` and continues.
 - Fixed model/provider resolution for model ids that contain slashes (Hugging Face `org/name` ids). `--model provider/model` now parses only the first segment as the provider, and an explicit `--provider` takes the model id verbatim (slashes allowed) instead of raising "provider specified twice". Because a supplied provider is returned unchanged, resolving an already-resolved pair is a no-op, so the internal re-resolve in `send_message` no longer rewrites or rejects these ids.
 
 ### 2026-09-26
