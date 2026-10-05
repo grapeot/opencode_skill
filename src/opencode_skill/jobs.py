@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import queue
 import sys
-import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
@@ -85,7 +83,7 @@ def submit_job(
         )
         status = "completed" if wait_completed else "wait_timeout"
     else:
-        status = _send_message_for_handoff(
+        _send_message_for_handoff(
             client,
             session_id=session_id,
             prompt=prompt,
@@ -94,6 +92,7 @@ def submit_job(
             agent=agent,
             send_timeout=send_timeout,
         )
+        status = "submitted"
     deleted = False
     if delete_session:
         deleted = client.delete_session(session_id)
@@ -139,7 +138,7 @@ def append_job(
         )
         status = "completed" if wait_completed else "wait_timeout"
     else:
-        status = _send_message_for_handoff(
+        _send_message_for_handoff(
             client,
             session_id=session_id,
             prompt=prompt,
@@ -148,6 +147,7 @@ def append_job(
             agent=agent,
             send_timeout=send_timeout,
         )
+        status = "submitted"
     return JobSubmissionResult(
         session_id=session_id,
         title="",
@@ -166,33 +166,22 @@ def _send_message_for_handoff(
     provider_id: str | None,
     agent: str | None,
     send_timeout: float | None,
-) -> str:
-    result_queue: queue.Queue[tuple[str, Any]] = queue.Queue(maxsize=1)
+) -> None:
+    """Hand a prompt off and return once the server accepts it.
 
-    def send() -> None:
-        try:
-            result = client.send_message(
-                session_id,
-                prompt,
-                model_id=model_id,
-                provider_id=provider_id,
-                agent=agent,
-                timeout=send_timeout,
-            )
-            result_queue.put(("result", result))
-        except Exception as exc:  # noqa: BLE001 - handoff status preserves the session id for follow-up
-            result_queue.put(("error", exc))
-
-    thread = threading.Thread(target=send, daemon=True)
-    thread.start()
-    thread.join(None if send_timeout is None or send_timeout <= 0 else send_timeout)
-
-    if thread.is_alive():
-        return "submitted_timeout"
-    kind, result = result_queue.get() if not result_queue.empty() else ("result", None)
-    if kind == "error" or result is None:
-        return "submitted_unconfirmed"
-    return "submitted"
+    The server call is fire-and-forget and synchronous from our side, so any
+    failure before acceptance propagates to the caller (transparent) and no
+    worker thread or handoff timeout is needed. ``send_timeout`` bounds the
+    acceptance request only; it is normally satisfied in milliseconds.
+    """
+    client.send_message_async(
+        session_id,
+        prompt,
+        model_id=model_id,
+        provider_id=provider_id,
+        agent=agent,
+        timeout=send_timeout,
+    )
 
 
 def submit_dry_run(
@@ -290,32 +279,21 @@ def submit_prompt_with_timeout(
     if not session_id:
         return None, "failed"
 
-    result_queue: queue.Queue[tuple[str, Any]] = queue.Queue(maxsize=1)
     provider_id, model_id = infer_provider(model, provider)
+    try:
+        client.send_message_async(
+            session_id,
+            prompt,
+            model_id=model_id,
+            provider_id=provider_id,
+            agent=agent,
+            timeout=send_timeout if send_timeout > 0 else None,
+        )
+    except Exception as exc:  # noqa: BLE001 - batch records the failure and continues
+        print(f"submit failed for {title!r}: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return session_id, "failed"
 
-    def send() -> None:
-        try:
-            result = client.send_message(
-                session_id,
-                prompt,
-                model_id=model_id,
-                provider_id=provider_id,
-                agent=agent,
-            )
-            result_queue.put(("result", result))
-        except Exception as exc:  # noqa: BLE001 - status is recorded in the batch manifest
-            result_queue.put(("error", exc))
-
-    thread = threading.Thread(target=send, daemon=True)
-    thread.start()
-    thread.join(None if send_timeout <= 0 else send_timeout)
-
-    if thread.is_alive():
-        status = "submitted_timeout"
-    else:
-        kind, result = result_queue.get() if not result_queue.empty() else ("result", None)
-        status = "submitted_unconfirmed" if kind == "error" or result is None else "submitted"
-
+    status = "submitted"
     if wait:
         client.wait_for_session_complete(session_id)
         status = "completed"

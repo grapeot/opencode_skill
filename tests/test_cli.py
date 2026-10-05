@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from opencode_skill import cli
+from opencode_skill.client import OpenCodeHTTPError
 
 
 def test_parse_cutoff_days():
@@ -203,8 +204,8 @@ def test_cli_submit_uses_prompt_file_and_preserves_session_by_default(tmp_path, 
         def create_session(self, _title):
             return "ses_cli"
 
-        def send_message(self, *_args, **_kwargs):
-            return {"ok": True}
+        def send_message_async(self, *_args, **_kwargs):
+            return None
 
         def wait_for_session_complete(self, *_args, **_kwargs):
             return True
@@ -227,6 +228,32 @@ def test_cli_submit_uses_prompt_file_and_preserves_session_by_default(tmp_path, 
     assert payload["session_id"] == "ses_cli"
     assert payload["status"] == "submitted"
     assert payload["deleted"] is False
+
+
+def test_cli_submit_returns_3_on_handoff_http_error(tmp_path, monkeypatch, capsys):
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Synthetic prompt", encoding="utf-8")
+
+    class FailingClient:
+        def create_session(self, _title):
+            return "ses_cli"
+
+        def send_message_async(self, *_args, **_kwargs):
+            raise OpenCodeHTTPError(method="POST", url="http://example.test/session/ses_cli/prompt_async", status_code=404, body="not found")
+
+    monkeypatch.setattr(cli, "OpenCodeClient", FailingClient)
+
+    rc = cli.main([
+        "submit",
+        "--prompt-file", str(prompt_file),
+        "--title", "Synthetic Job",
+        "--model", "provider/model",
+    ])
+
+    assert rc == 3
+    err = capsys.readouterr().err
+    assert "OpenCodeHTTPError" in err
+    assert "secret" not in err
 
 
 def test_cli_submit_dry_run_ignores_real_prompt_and_verifies_ok(tmp_path, monkeypatch, capsys):
@@ -314,12 +341,12 @@ def test_cli_append_sends_prompt_to_existing_session(tmp_path, monkeypatch, caps
     prompt_file.write_text("Follow up", encoding="utf-8")
 
     class FakeClient:
-        def send_message(self, session_id, message, **kwargs):
+        def send_message_async(self, session_id, message, **kwargs):
             assert session_id == "ses_existing"
             assert message == "Follow up"
             assert kwargs["model_id"] == "model"
             assert kwargs["provider_id"] == "provider"
-            return {"ok": True}
+            return None
 
     monkeypatch.setattr(cli, "OpenCodeClient", FakeClient)
 
@@ -397,9 +424,8 @@ def test_cli_submit_slash_model_ignores_env_provider(tmp_path, monkeypatch, caps
         def create_session(self, _title):
             return "ses_cli"
 
-        def send_message(self, *_args, **kwargs):
+        def send_message_async(self, *_args, **kwargs):
             sent.update(kwargs)
-            return {"ok": True}
 
     monkeypatch.setenv("OPENCODE_PROVIDER", "env-provider")
     monkeypatch.setenv("OPENCODE_MODEL", "env-model")
@@ -452,9 +478,8 @@ def test_cli_submit_uses_env_pair_when_flags_omitted(tmp_path, monkeypatch, caps
         def create_session(self, _title):
             return "ses_env"
 
-        def send_message(self, *_args, **kwargs):
+        def send_message_async(self, *_args, **kwargs):
             sent.update(kwargs)
-            return {"ok": True}
 
     monkeypatch.setenv("OPENCODE_MODEL", "env-model")
     monkeypatch.setenv("OPENCODE_PROVIDER", "env-provider")

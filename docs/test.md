@@ -8,9 +8,9 @@ Tests must not require a real OpenCode server or inspect a user's real OpenCode 
 
 HTTP client tests cover Basic auth header construction, missing password handling, create-session parsing, send-message payloads, typed HTTP errors, same-source provider/model resolution (including slash-containing model ids, resolution idempotency, and literal model ids when an explicit provider is given), and wait polling with injected sleep.
 
-Single-job tests cover prompt-source validation, create/send handoff workflow, append-to-existing-session workflow, explicit wait behavior, default session preservation, optional deletion, handoff timeout status, explicit provider handling, dry-run prompt replacement, OK verification, and failure handling when the assistant response differs from `OK`.
+Single-job tests cover prompt-source validation, fire-and-forget handoff via `prompt_async` (acceptance returns `submitted`; failures before acceptance propagate), append-to-existing-session workflow, explicit wait behavior, default session preservation, optional deletion, explicit provider handling, dry-run prompt replacement, OK verification, and failure handling when the assistant response differs from `OK`.
 
-Batch tests cover spec discovery, template rendering with `{{VAR}}` and `${VAR}`, unresolved and bare-token validation, slug filters, smoke slug, template directory selection, the required `batch-` title prefix, QA grouping, QA-from-manifest, manifest structure, rate limiting with injected sleep, and send timeout behavior with fake clients.
+Batch tests cover spec discovery, template rendering with `{{VAR}}` and `${VAR}`, unresolved and bare-token validation, slug filters, smoke slug, template directory selection, the required `batch-` title prefix, QA grouping, QA-from-manifest, manifest structure, rate limiting with injected sleep, and failed-handoff recording with fake clients.
 
 Selector tests cover explicit IDs, ID files, title prefixes, empty selections, descendant expansion, and multi-level child sessions.
 

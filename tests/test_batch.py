@@ -150,8 +150,8 @@ def test_rate_limit_uses_injected_sleep_for_live_submit(tmp_path: Path) -> None:
             self.count += 1
             return f"ses_{self.count}"
 
-        def send_message(self, *_args: Any, **_kwargs: Any) -> dict[str, str]:
-            return {"ok": "yes"}
+        def send_message_async(self, *_args: Any, **_kwargs: Any) -> None:
+            return None
 
     args = parse(["submit", "--template", str(template), "--specs", str(specs), "--output-root", str(tmp_path / "out"), "--rate-limit", "0.5", "--batch-id", "rate001"])
 
@@ -161,14 +161,13 @@ def test_rate_limit_uses_injected_sleep_for_live_submit(tmp_path: Path) -> None:
     assert [item["session_id"] for item in manifest["slugs"]] == ["ses_1", "ses_2", "ses_3"]
 
 
-def test_live_submit_times_out_send_message_and_continues(tmp_path: Path) -> None:
+def test_live_submit_records_failed_handoff_and_continues(tmp_path: Path) -> None:
     specs = write_specs(tmp_path, "a", "b")
     template = tmp_path / "template.md"
     template.write_text("slug={{SLUG}}", encoding="utf-8")
     send_started: list[str] = []
-    release = threading.Event()
 
-    class SlowClient:
+    class FailingClient:
         def __init__(self) -> None:
             self.count = 0
 
@@ -176,19 +175,15 @@ def test_live_submit_times_out_send_message_and_continues(tmp_path: Path) -> Non
             self.count += 1
             return f"ses_{self.count}"
 
-        def send_message(self, *args: Any, **_kwargs: Any) -> dict[str, str]:
+        def send_message_async(self, *args: Any, **_kwargs: Any) -> None:
             send_started.append(args[0])
-            release.wait(1)
-            return {"ok": "late"}
+            raise RuntimeError("server rejected the prompt")
 
-    args = parse(["submit", "--template", str(template), "--specs", str(specs), "--output-root", str(tmp_path / "out"), "--send-timeout", "0.01", "--rate-limit", "0", "--batch-id", "timeout001"])
+    args = parse(["submit", "--template", str(template), "--specs", str(specs), "--output-root", str(tmp_path / "out"), "--send-timeout", "0.01", "--rate-limit", "0", "--batch-id", "failing001"])
 
-    try:
-        assert batch.run(args, client_factory=SlowClient) == 0
-    finally:
-        release.set()
-    manifest = json.loads((tmp_path / "out" / "timeout001" / "batch_manifest.json").read_text(encoding="utf-8"))
-    assert [item["status"] for item in manifest["slugs"]] == ["submitted_timeout", "submitted_timeout"]
+    assert batch.run(args, client_factory=FailingClient) == 2
+    manifest = json.loads((tmp_path / "out" / "failing001" / "batch_manifest.json").read_text(encoding="utf-8"))
+    assert [item["status"] for item in manifest["slugs"]] == ["failed", "failed"]
     assert send_started == ["ses_1", "ses_2"]
 
 

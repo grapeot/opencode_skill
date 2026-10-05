@@ -80,6 +80,30 @@ def test_create_session_and_send_message_payload() -> None:
     assert message_payload["agent"] == "agent-name"
 
 
+def test_send_message_async_posts_to_prompt_async_and_returns_none() -> None:
+    http = FakeHTTPSession()
+    http.queue(FakeResponse(status_code=204, payload=None, text=""))
+    client = OpenCodeClient(base_url="http://example.test", username="user", password="secret", session=http, load_env=False)
+
+    result = client.send_message_async("ses_test", "Do the thing", model_id="provider/model", agent="agent-name")
+
+    assert result is None
+    method, url, kwargs = http.calls[0]
+    assert (method, url) == ("POST", "http://example.test/session/ses_test/prompt_async")
+    assert kwargs["json"]["model"] == {"modelID": "model", "providerID": "provider"}
+    assert kwargs["json"]["parts"] == [{"type": "text", "text": "Do the thing"}]
+
+
+def test_send_message_async_raises_on_rejected_handoff() -> None:
+    http = FakeHTTPSession()
+    http.queue(FakeResponse(status_code=404, payload={}, text='{"name":"NotFoundError"}'))
+    client = OpenCodeClient(base_url="http://example.test", username="user", password="secret", session=http, load_env=False)
+
+    with pytest.raises(OpenCodeHTTPError) as excinfo:
+        client.send_message_async("ses_missing", "Do the thing", model_id="provider/model")
+    assert excinfo.value.status_code == 404
+
+
 def test_http_error_body_is_truncated_and_credential_free() -> None:
     http = FakeHTTPSession()
     http.queue(FakeResponse(status_code=500, payload={}, text="server failed"))

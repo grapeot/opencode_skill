@@ -66,7 +66,8 @@ Credentials, ports, preferred model names, and preferred agent names belong in `
 The public client talks to the OpenCode server with Basic auth and a small endpoint set. It reads process env plus a CWD `.env` file, accepts explicit constructor overrides for tests, and raises typed exceptions without including credentials in error messages:
 
 - `POST /session` to create a session
-- `POST /session/{id}/message` to send a prompt or append a follow-up prompt
+- `POST /session/{id}/prompt_async` to hand a prompt off fire-and-forget (returns `204 No Content` on acceptance)
+- `POST /session/{id}/message` to send a prompt and block for the response; used by `--wait` and by dry-run verification
 - `GET /session/{id}` to inspect session metadata
 - `GET /session/{id}/message` to inspect messages for smoke verification
 - `DELETE /session/{id}` to delete ephemeral sessions
@@ -78,7 +79,9 @@ The client should raise typed exceptions with HTTP status and response body snip
 
 `submit` accepts prompt text as an argument, from `--prompt-file`, or from `--stdin`. It creates one session, sends one prompt, returns after handoff by default, and deletes or preserves the session according to explicit flags.
 
-Default behavior should be safe for automation and auditability: preserve sessions unless `--delete-session` is passed, and do not block on long-running OpenCode work. If the HTTP message request times out during handoff, the command should still return the created session ID with `status=submitted_timeout`; this lets schedulers treat session creation as the durable handoff boundary. A user can choose `--wait` for blocking jobs.
+Default behavior should be safe for automation and auditability: preserve sessions unless `--delete-session` is passed, and do not block on long-running OpenCode work.
+
+The default handoff uses the server's fire-and-forget `prompt_async` endpoint and returns once the server accepts the prompt (`status=submitted`). The call is synchronous from our side and needs no worker thread, so a failure before acceptance raises to the caller and the CLI exits non-zero with the original error; it is never collapsed into a success-looking status. A non-2xx response or a locally rejected model ref exits 3; a transport error (timeout, connection failure) raises as its own exception and exits 1. Acceptance (`204`) only means the session exists and the prompt was queued. The server does not validate the model or agent before returning `204`: an unknown provider or agent is still accepted and fails later in the background, so a zero exit code does not prove the model or agent was valid. `--wait` opts into blocking by polling session status (and, if needed, the blocking `/message` endpoint). A user can choose `--wait` for blocking jobs.
 
 Provider and model must come from the same source. Omit both `--model` and `--provider` to use `.env` (`OPENCODE_MODEL` as `provider/model`, or a bare id plus `OPENCODE_PROVIDER`). Pass a complete CLI pair instead: `--model provider/model`, or `--model <id> --provider <provider>`. A bare `--model` does not take `OPENCODE_PROVIDER` from `.env`; that mix is rejected.
 
@@ -97,7 +100,7 @@ The dry run intentionally performs a small network side effect because it is a c
 
 ## Existing Session Append
 
-`append` accepts prompt text as an argument, from `--prompt-file`, or from `--stdin`, plus a required `--session-id`. It sends the prompt to an existing session via `POST /session/{id}/message`, returns after handoff by default, and can block with `--wait` when the caller needs completion semantics.
+`append` accepts prompt text as an argument, from `--prompt-file`, or from `--stdin`, plus a required `--session-id`. It hands the prompt to an existing session via `POST /session/{id}/prompt_async` and returns once accepted, with the same transparent-failure behavior as `submit`; `--wait` switches to blocking completion semantics.
 
 `append --dry-run` uses the same prompt-source validation as a real append command, but it does not send the real prompt to the target session. The flow is:
 
