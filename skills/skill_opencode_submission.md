@@ -34,7 +34,7 @@ All commands run from the project root.
 .venv/bin/python -m opencode_skill batch qa --slugs alpha,beta --output-root tmp/batch_runs --group-size 2 --dry-run
 ```
 
-`--model` and `--provider` must be a complete pair from one source. Pass `--model example/default-model`, or `--model default-model --provider example`. Omitting both flags uses `.env`. A bare `--model` does not take `OPENCODE_PROVIDER` from `.env`.
+`--model` and `--provider` must be a complete pair from one source. Pass `--model example/default-model`, or `--model default-model --provider example`. Omitting both flags uses `.env`. A bare `--model` does not take `OPENCODE_PROVIDER` from `.env`. Model ids may contain slashes: in `--model provider/model` only the first segment is the provider, so `--model huggingface/example-org/example-model` parses as provider `huggingface` and model `example-org/example-model`.
 
 ## Single Submission Workflow
 

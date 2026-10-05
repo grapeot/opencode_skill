@@ -130,8 +130,45 @@ def test_provider_inference() -> None:
     assert infer_provider("model", "explicit") == ("explicit", "model")
     with pytest.raises(ModelRefError, match="same source"):
         infer_provider("model")
-    with pytest.raises(ModelRefError, match="specified twice"):
-        infer_provider("provider/model", "explicit")
+
+
+def test_provider_inference_keeps_slashes_in_model_id() -> None:
+    # Hugging Face ids are "org/name"; the first slash is the provider, the
+    # rest belongs to the model.
+    assert infer_provider("huggingface/example-org/example-model") == (
+        "huggingface",
+        "example-org/example-model",
+    )
+    assert infer_provider("example-org/example-model", "huggingface") == (
+        "huggingface",
+        "example-org/example-model",
+    )
+
+
+def test_resolve_model_ref_is_idempotent() -> None:
+    # submit_job resolves the ref into (provider, model), then send_message
+    # resolves that pair again as (model, provider). Re-resolving must be a
+    # no-op even when the model id itself contains further slashes.
+    provider, model = resolve_model_ref("huggingface/example-org/example-model")
+    assert resolve_model_ref(model, provider) == (provider, model)
+
+
+def test_resolve_model_ref_is_idempotent_when_org_matches_provider() -> None:
+    # A model id whose org segment equals the provider (e.g. "huggingface/...")
+    # must survive re-resolution unchanged; an explicit provider is literal.
+    provider, model = resolve_model_ref("huggingface/huggingface/model-name")
+    assert (provider, model) == ("huggingface", "huggingface/model-name")
+    assert resolve_model_ref(model, provider) == (provider, model)
+    assert resolve_model_ref("huggingface/model-name", "huggingface") == (
+        "huggingface",
+        "huggingface/model-name",
+    )
+
+
+def test_resolve_model_ref_explicit_provider_is_literal_on_mismatch() -> None:
+    # With an explicit provider the model string is literal; resolution does
+    # not guess that a leading "other/" is a duplicate provider.
+    assert resolve_model_ref("openai/gpt-4", "anthropic") == ("anthropic", "openai/gpt-4")
 
 
 def test_cli_model_provider_does_not_mix_env_provider_with_cli_model(monkeypatch: pytest.MonkeyPatch) -> None:

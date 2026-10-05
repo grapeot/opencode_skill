@@ -435,7 +435,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_submit.add_argument(
         "--provider",
         default=None,
-        help="provider id; required with a bare --model, forbidden with provider/model",
+        help="provider id; required with a bare --model; with provider/model the model id is literal (slashes allowed)",
     )
     p_submit.add_argument("--agent", default=os.environ.get("OPENCODE_AGENT"))
     p_submit.add_argument("--dry-run", action="store_true", help="submit a harmless OK-only prompt instead of the provided prompt")
@@ -466,7 +466,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_append.add_argument(
         "--provider",
         default=None,
-        help="provider id; required with a bare --model, forbidden with provider/model",
+        help="provider id; required with a bare --model; with provider/model the model id is literal (slashes allowed)",
     )
     p_append.add_argument("--agent", default=os.environ.get("OPENCODE_AGENT"))
     p_append.add_argument("--dry-run", action="store_true", help="verify target session and routing without appending the real prompt")
