@@ -22,6 +22,8 @@ Query tests cover main-only reads, main plus archive reads, explicit archive exc
 
 CLI tests cover stats, plan, confirmation requirements, `--no-delete`, an end-to-end copy/verify/delete flow using temporary databases, `submit` with a prompt file, default handoff behavior, `submit --dry-run`, `append`, `append --dry-run`, `batch submit --dry-run`, slash `--model` ignoring `OPENCODE_PROVIDER`, slash-containing model ids resolving through `submit`, rejection of a bare `--model` mixed with env provider, and env-pair defaults when both flags are omitted.
 
+Peer tests use synthetic fixtures only. They check that a same-title replaced session is not selected, an ambiguous owner map is not guessed, an ack is not acceptance, and an unknown self id is not invented from a recent session. Client tests check that session list, children, status, and bounded experimental reads pass only known query parameters. They do not claim a live server delivery.
+
 ## Local Verification
 
 From the repository root:

@@ -195,6 +195,40 @@ def test_resolve_model_ref_explicit_provider_is_literal_on_mismatch() -> None:
     assert resolve_model_ref("openai/gpt-4", "anthropic") == ("anthropic", "openai/gpt-4")
 
 
+def test_list_sessions_passes_only_known_query_params() -> None:
+    http = FakeHTTPSession()
+    http.queue(FakeResponse(payload=[], text="[]"))
+    client = OpenCodeClient(base_url="http://example.test", username="user", password="secret", session=http, load_env=False)
+
+    assert client.list_sessions(directory="/work/alpha", roots=True, search="alpha", limit=8) == []
+    params = http.calls[0][2]["params"]
+    assert params == {"directory": "/work/alpha", "roots": "true", "search": "alpha", "limit": "8"}
+    with pytest.raises(ValueError, match="scope"):
+        client.list_sessions(scope="global")
+
+
+def test_children_status_and_bounded_experimental_reads() -> None:
+    http = FakeHTTPSession()
+    http.queue(FakeResponse(payload=[{"id": "ses_example_child"}], text='[{"id":"ses_example_child"}]'))
+    http.queue(FakeResponse(payload={"ses_example_current": {"type": "busy"}}, text="{}"))
+    http.queue(FakeResponse(payload=[], text="[]"))
+    client = OpenCodeClient(base_url="http://example.test", username="user", password="secret", session=http, load_env=False)
+
+    assert client.list_children("ses_example_parent", directory="/work/alpha") == [{"id": "ses_example_child"}]
+    assert client.get_session_statuses(directory="/work/alpha")["ses_example_current"]["type"] == "busy"
+    assert client.list_experimental_sessions(directory="/work/alpha", limit=5, archived=True) == []
+    assert http.calls[0][1] == "http://example.test/session/ses_example_parent/children"
+    assert http.calls[0][2]["params"] == {"directory": "/work/alpha"}
+    assert "workspace" not in http.calls[0][2]["params"]
+    assert http.calls[1][2]["params"] == {"directory": "/work/alpha"}
+    assert "workspace" not in http.calls[1][2]["params"]
+    assert http.calls[2][1] == "http://example.test/experimental/session"
+    assert http.calls[2][2]["params"]["archived"] == "true"
+    assert http.calls[2][2]["params"]["limit"] == "5"
+    with pytest.raises(ValueError, match="directory or search"):
+        client.list_experimental_sessions(limit=5)
+
+
 def test_cli_model_provider_does_not_mix_env_provider_with_cli_model(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENCODE_MODEL", "env-model")
     monkeypatch.setenv("OPENCODE_PROVIDER", "env-provider")

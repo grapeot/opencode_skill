@@ -133,6 +133,24 @@ def _raise_for_status(method: str, url: str, response: ResponseLike) -> None:
     raise OpenCodeHTTPError(method=method, url=url, status_code=response.status_code, body=_response_body(response))
 
 
+def _query_value(key: str, value: Any) -> str:
+    if key in {"roots", "archived"}:
+        if not isinstance(value, bool):
+            raise ValueError(f"{key} must be a bool")
+        return "true" if value else "false"
+    if key == "scope":
+        if value != "project":
+            raise ValueError("scope must be 'project' when set")
+        return "project"
+    if key in {"start", "cursor", "limit"}:
+        return str(int(value))
+    return str(value)
+
+
+def _query_params(values: dict[str, Any]) -> dict[str, str]:
+    return {key: _query_value(key, value) for key, value in values.items() if value is not None}
+
+
 def _json_response(method: str, url: str, response: ResponseLike, *, allow_empty: bool = False) -> Any:
     _raise_for_status(method, url, response)
     if not (getattr(response, "text", "") or "").strip():
@@ -169,14 +187,97 @@ class OpenCodeClient:
         credentials = f"{self.username}:{self.password}".encode("utf-8")
         self.headers = {"Authorization": "Basic " + base64.b64encode(credentials).decode("ascii")}
 
-    def list_sessions(self) -> list[dict[str, Any]]:
-        url = f"{self.base_url}/session"
+    def get_openapi(self) -> dict[str, Any]:
+        url = f"{self.base_url}/doc"
         response = self._session.get(url, headers=self.headers, timeout=30)
+        payload = _json_response("GET", url, response)
+        return payload if isinstance(payload, dict) else {}
+
+    def list_sessions(
+        self,
+        *,
+        directory: str | None = None,
+        workspace: str | None = None,
+        scope: str | None = None,
+        path: str | None = None,
+        roots: bool | None = None,
+        start: int | None = None,
+        search: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        url = f"{self.base_url}/session"
+        params = _query_params(
+            {
+                "directory": directory,
+                "workspace": workspace,
+                "scope": scope,
+                "path": path,
+                "roots": roots,
+                "start": start,
+                "search": search,
+                "limit": limit,
+            }
+        )
+        response = self._session.get(url, headers=self.headers, params=params or None, timeout=30)
         payload = _json_response("GET", url, response)
         if isinstance(payload, list):
             return payload
         if isinstance(payload, dict) and isinstance(payload.get("sessions"), list):
             return payload["sessions"]
+        return []
+
+    def list_children(
+        self,
+        session_id: str,
+        *,
+        directory: str | None = None,
+    ) -> list[dict[str, Any]]:
+        url = f"{self.base_url}/session/{session_id}/children"
+        params = _query_params({"directory": directory})
+        response = self._session.get(url, headers=self.headers, params=params or None, timeout=30)
+        payload = _json_response("GET", url, response)
+        if isinstance(payload, list):
+            return payload
+        return []
+
+    def list_experimental_sessions(
+        self,
+        *,
+        limit: int,
+        directory: str | None = None,
+        workspace: str | None = None,
+        roots: bool | None = None,
+        start: int | None = None,
+        cursor: int | None = None,
+        search: str | None = None,
+        archived: bool | None = None,
+    ) -> list[dict[str, Any]]:
+        """Cross-project list. Requires directory or search, and an explicit limit.
+
+        ``archived=True`` includes archived and non-archived rows. It does not
+        mean archived-only. This method returns the page body, not ``x-next-cursor``.
+        """
+        if directory is None and search is None:
+            raise ValueError("experimental session list requires directory or search")
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        url = f"{self.base_url}/experimental/session"
+        params = _query_params(
+            {
+                "directory": directory,
+                "workspace": workspace,
+                "roots": roots,
+                "start": start,
+                "cursor": cursor,
+                "search": search,
+                "limit": limit,
+                "archived": archived,
+            }
+        )
+        response = self._session.get(url, headers=self.headers, params=params, timeout=30)
+        payload = _json_response("GET", url, response)
+        if isinstance(payload, list):
+            return payload
         return []
 
     def create_session(self, title: str) -> str:
@@ -267,9 +368,15 @@ class OpenCodeClient:
         )
         _raise_for_status("POST", url, response)
 
-    def get_session_info(self, session_id: str) -> dict[str, Any]:
+    def get_session_info(
+        self,
+        session_id: str,
+        *,
+        directory: str | None = None,
+    ) -> dict[str, Any]:
         url = f"{self.base_url}/session/{session_id}"
-        response = self._session.get(url, headers=self.headers, timeout=10)
+        params = _query_params({"directory": directory})
+        response = self._session.get(url, headers=self.headers, params=params or None, timeout=10)
         payload = _json_response("GET", url, response)
         return payload if isinstance(payload, dict) else {}
 
@@ -283,10 +390,19 @@ class OpenCodeClient:
             return payload["messages"]
         return []
 
-    def get_session_statuses(self) -> dict[str, dict[str, Any]]:
-        """Return the authoritative busy/idle status map for active sessions."""
+    def get_session_statuses(
+        self,
+        *,
+        directory: str | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Return the non-idle status map for one directory instance.
+
+        Idle sessions are absent from this map. Absence is not completion, and
+        a map from another directory does not describe this session.
+        """
         url = f"{self.base_url}/session/status"
-        response = self._session.get(url, headers=self.headers, timeout=10)
+        params = _query_params({"directory": directory})
+        response = self._session.get(url, headers=self.headers, params=params or None, timeout=10)
         payload = _json_response("GET", url, response)
         return payload if isinstance(payload, dict) else {}
 

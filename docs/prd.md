@@ -32,7 +32,7 @@ The tool should let a user or agent:
 
 ## Non-Goals
 
-This project does not start or stop OpenCode servers, define project-specific prompt content, provide a GUI, sync databases across machines, or delete exported Markdown session files. Private workspace overlays can define preferred models, agents, ports, aliases, and project workflows.
+This project does not start or stop OpenCode servers, define project-specific prompt content, provide a GUI, sync databases across machines, or delete exported Markdown session files. It does not add a session registry, message broker, or delivery queue. Private workspace overlays can define preferred models, agents, ports, aliases, and project workflows.
 
 ## Expected Behavior
 
@@ -41,6 +41,8 @@ This project does not start or stop OpenCode servers, define project-specific pr
 `submit --dry-run` validates the same server, credential, model, provider, and agent path without sending the user's real prompt. It creates an ephemeral session, sends a fixed OK-only prompt, waits for completion, verifies that the final assistant response is exactly `OK`, and deletes the dry-run session by default. This is the preferred preflight before putting a future `submit` command behind a scheduler.
 
 `append` hands one prompt to `POST /session/{id}/prompt_async` for an existing session. It should preserve the session and return once the server accepts the prompt (`submitted`). A failure before acceptance exits non-zero with the original error rather than reporting a success-looking status. `append --dry-run` verifies the target session is reachable, then runs the same harmless `OK` dry-run flow in an ephemeral session instead of writing a test message into the target session.
+
+Peer contact reuses append and a plain-text envelope. It does not add a send command or a registry. See `skills/skill_opencode_agent_to_agent.md`.
 
 `batch submit` discovers Markdown spec files, renders a template for each spec, writes rendered prompts and a manifest, and optionally submits them to OpenCode with rate limiting. `--dry-run` must perform all rendering and manifest work without network calls.
 

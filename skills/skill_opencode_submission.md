@@ -6,7 +6,7 @@ Use this skill when a user asks you to submit one prompt to OpenCode, append a f
 
 This skill does not start or stop OpenCode servers and does not define private prompt policy. Use the user's `.env` or private overlay for endpoint, credential, model, agent, template, and routing defaults.
 
-For recurring cron jobs, use `skill_opencode_periodic_job.md`. For SQLite stats, archive, compaction, or local session data maintenance, use `skill_opencode_data.md`.
+For recurring cron jobs, use `skill_opencode_periodic_job.md`. For SQLite stats, archive, compaction, or local session data maintenance, use `skill_opencode_data.md`. Peer contact with another agent uses `skill_opencode_agent_to_agent.md` and the existing append command. The recent-session heuristic below applies only to a human continuing the conversation they are already in. It does not select a peer target or an unknown self session id.
 
 ## Prerequisites
 
