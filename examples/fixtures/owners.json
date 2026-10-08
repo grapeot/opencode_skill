@@ -1,0 +1,74 @@
+{
+  "same_title": {
+    "bindings": [
+      {
+        "task_key": "alpha",
+        "attempt_id": "a1",
+        "session_id": "ses_example_replaced",
+        "directory": "/work/alpha-old",
+        "project": "alpha",
+        "state": "aborted",
+        "title": "Alpha task"
+      },
+      {
+        "task_key": "alpha",
+        "attempt_id": "a2",
+        "session_id": "ses_example_current",
+        "directory": "/work/alpha",
+        "project": "alpha",
+        "state": "current",
+        "title": "Alpha task"
+      }
+    ],
+    "sessions": [
+      {
+        "session_id": "ses_example_replaced",
+        "title": "Alpha task",
+        "directory": "/work/alpha-old",
+        "project": "alpha"
+      },
+      {
+        "session_id": "ses_example_current",
+        "title": "Alpha task",
+        "directory": "/work/alpha",
+        "project": "alpha"
+      }
+    ],
+    "verified_get": {
+      "session_id": "ses_example_current",
+      "title": "Alpha task",
+      "directory": "/work/alpha",
+      "project": "alpha"
+    }
+  },
+  "ambiguous": {
+    "bindings": [
+      {
+        "task_key": "beta",
+        "attempt_id": "b1",
+        "session_id": "ses_example_one",
+        "directory": "/work/beta",
+        "state": "current",
+        "title": "Beta task"
+      },
+      {
+        "task_key": "beta",
+        "attempt_id": "b2",
+        "session_id": "ses_example_two",
+        "directory": "/work/beta",
+        "state": "current",
+        "title": "Beta task"
+      }
+    ]
+  },
+  "unknown_self": {
+    "explicit_session_id": null,
+    "recent_sessions": [
+      {
+        "session_id": "ses_example_recent",
+        "title": "Alpha task",
+        "directory": "/work/alpha"
+      }
+    ]
+  }
+}

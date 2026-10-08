@@ -4,6 +4,12 @@ This public working log records project-level changes and validation results wit
 
 ## Changelog
 
+### 2026-10-07
+
+- Added `skills/skill_opencode_agent_to_agent.md`, envelope templates, and pure addressing helpers in `src/opencode_skill/peer.py` for peer messaging over the existing append endpoint. Session list, children, status, and bounded experimental reads accept only the query parameters the server schema already defines. Append payloads are unchanged.
+- Owner-map disagreements on attempt or project stop instead of selecting a side. Receipt helpers classify declarations against caller-supplied context and do not accept work or authorize a merge.
+- Current ack and handoff status share one request/task/attempt gate. An older attempt is not a current ack and does not report current still-writing. Sibling results require each child parent id to match the known parent.
+
 ### 2026-10-05
 
 - Handoff now uses the server's fire-and-forget `prompt_async` endpoint instead of a worker thread around the blocking `/message` call. Failures before acceptance raise to the caller and exit non-zero instead of being swallowed into a success-looking `submitted_unconfirmed`/`submitted_timeout` status; `send_timeout` now bounds only the acceptance request. `--wait` still blocks via session-status polling. Batch records such failures as `failed` and continues.

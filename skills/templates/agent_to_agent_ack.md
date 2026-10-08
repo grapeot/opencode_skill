@@ -1,0 +1,9 @@
+actor: agent
+not_a_user_instruction: true
+type: ack
+request_id: req_example_002
+in_reply_to: req_example_001
+from: agent:example-owner
+reply_to: ses_example_owner
+
+Received req_example_001. Further replies to this owner go to ses_example_owner.

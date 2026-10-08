@@ -2,7 +2,7 @@
 
 ## What This Repo Is
 
-This repository contains a Python package, CLI, tests, and one root AI skill for local-first OpenCode workflows. It covers two surfaces: generic HTTP submission to a user-controlled OpenCode server, and SQLite data maintenance for sessions that already exist.
+This repository contains a Python package, CLI, tests, and public AI skills for local-first OpenCode workflows. It covers two surfaces: generic HTTP submission to a user-controlled OpenCode server, and SQLite data maintenance for sessions that already exist.
 
 Submission commands create sessions, send prompts, and write auditable manifests for batch work. Maintenance commands inspect, archive, and compact local OpenCode SQLite data with plan-before-apply safeguards.
 
@@ -36,7 +36,7 @@ Mutation workflows must preserve the safety model:
 
 This repository is intended to be public. Keep examples synthetic and generic. Do not add real OpenCode session IDs, prompt/message dumps, personal filesystem paths, backup paths, token totals, operational logs, API keys, passwords, private endpoints, private model names, private agent names, or private server commands.
 
-The public skill entry points are split by responsibility: `skills/skill_opencode_submission.md` for prompt/batch submission, `skills/skill_opencode_data.md` for SQLite data maintenance, `skills/skill_opencode_throughput.md` for measuring per-provider/model inference throughput, and `skills/skill_opencode_periodic_job.md` for recurring cron submission. If a private workspace needs additional defaults or routing, keep that overlay in the private workspace's own skill/config directory rather than in this repo.
+The public skill entry points are split by responsibility: `skills/skill_opencode_submission.md` for prompt/batch submission, `skills/skill_opencode_data.md` for SQLite data maintenance, `skills/skill_opencode_throughput.md` for measuring per-provider/model inference throughput, `skills/skill_opencode_periodic_job.md` for recurring cron submission, and `skills/skill_opencode_agent_to_agent.md` for agent-to-agent contact over the existing append path. If a private workspace needs additional defaults or routing, keep that overlay in the private workspace's own skill/config directory rather than in this repo.
 
 ## Testing and Docs
 

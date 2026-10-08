@@ -6,7 +6,7 @@ This repository is designed to be publishable with only fake examples. Runtime d
 
 ## Install
 
-Hand this repository URL to an AI coding agent and ask it to install the skill in your workspace. The agent should start from your workspace `AGENTS.md`, `CLAUDE.md`, or equivalent instructions, then add the relevant public skill files to your skill discovery chain: `skills/skill_opencode_submission.md` for prompt submission and batch work, `skills/skill_opencode_data.md` for SQLite data maintenance, `skills/skill_opencode_throughput.md` for inference throughput measurement, and `skills/skill_opencode_periodic_job.md` for recurring cron jobs.
+Hand this repository URL to an AI coding agent and ask it to install the skill in your workspace. The agent should start from your workspace `AGENTS.md`, `CLAUDE.md`, or equivalent instructions, then add the relevant public skill files to your skill discovery chain: `skills/skill_opencode_submission.md` for prompt submission and batch work, `skills/skill_opencode_data.md` for SQLite data maintenance, `skills/skill_opencode_throughput.md` for inference throughput measurement, `skills/skill_opencode_periodic_job.md` for recurring cron jobs, and `skills/skill_opencode_agent_to_agent.md` for agent-to-agent contact over the existing append path.
 
 For a direct local install:
 
@@ -89,7 +89,7 @@ Prefer explicit `--main`, `--archive`, and `--dest` paths when working outside t
 
 ## For AI Agents
 
-When a user asks you to submit, append, or batch OpenCode work, read `skills/skill_opencode_submission.md` first. When a user asks you to inspect, archive, compact, or query local OpenCode SQLite data, read `skills/skill_opencode_data.md` first. For recurring cron submission workflows, read `skills/skill_opencode_periodic_job.md`.
+When a user asks you to submit, append, or batch OpenCode work, read `skills/skill_opencode_submission.md` first. When a user asks you to inspect, archive, compact, or query local OpenCode SQLite data, read `skills/skill_opencode_data.md` first. For recurring cron submission workflows, read `skills/skill_opencode_periodic_job.md`. To contact another agent session, read `skills/skill_opencode_agent_to_agent.md` and use the existing append transport with a plain-text envelope. Resolve the destination from the current owner map, not from a session title, and do not treat an acknowledgement as acceptance.
 
 Use public mechanics from this repo and private defaults from the user's own `.env` or overlay. Do not copy private prompts, endpoints, model names, agent names, session IDs, manifests, database paths, or logs into public files.
 
@@ -109,6 +109,7 @@ The main design documents are:
 - `skills/skill_opencode_submission.md`: prompt and batch submission contract
 - `skills/skill_opencode_data.md`: local SQLite maintenance contract
 - `skills/skill_opencode_periodic_job.md`: recurring cron submission workflow
+- `skills/skill_opencode_agent_to_agent.md`: agent-to-agent contact over the existing append path
 
 ## Local Data
 

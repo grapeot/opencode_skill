@@ -32,6 +32,9 @@ src/opencode_skill/throughput.py
   read-only effective-throughput measurement (tokens/s) per provider/model,
   percentile aggregation, and Markdown/box-plot report rendering
 
+src/opencode_skill/peer.py
+  pure owner resolution, text envelopes, and receipt checks; no send path
+
 src/opencode_skill/cli.py
   thin argparse entrypoint for humans and AI agents
 ```
@@ -127,6 +130,8 @@ LIMIT 8;
 ```
 
 Use the top candidate only when multiple signals agree: the directory equals the current workspace, `time_updated` is close to the current interaction, and the title matches the user's current task. If several active sessions in the same directory have similar update times, require an explicit session ID. After choosing a candidate, verify it with `GET /session/{id}` before appending. Do not read or print prompt/message bodies unless the user explicitly asks for content inspection.
+
+This inference is not peer discovery. Agent-to-agent addressing uses `src/opencode_skill/peer.py` and the current owner map. Read helpers can check the session routing directory before append. They do not change the append payload, and append does not select that directory. Do not report a project as matched unless the owner record and the GET view both had the same comparable value. A title match, including a session that still returns HTTP 200, is not the current owner.
 
 ## Batch Submission
 
