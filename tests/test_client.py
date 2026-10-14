@@ -46,6 +46,10 @@ class FakeHTTPSession:
         self.calls.append(("DELETE", url, kwargs))
         return self.responses.pop(0)
 
+    def patch(self, url: str, **kwargs: Any) -> FakeResponse:
+        self.calls.append(("PATCH", url, kwargs))
+        return self.responses.pop(0)
+
 
 def test_basic_auth_header_uses_supplied_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPENCODE_PASSWORD", raising=False)
@@ -227,6 +231,32 @@ def test_children_status_and_bounded_experimental_reads() -> None:
     assert http.calls[2][2]["params"]["limit"] == "5"
     with pytest.raises(ValueError, match="directory or search"):
         client.list_experimental_sessions(limit=5)
+
+
+def test_set_session_archived_sends_patch_and_verifies_echo() -> None:
+    http = FakeHTTPSession()
+    http.queue(FakeResponse(payload={"id": "ses_example", "time": {"archived": 0}}, text="{}"))
+    client = OpenCodeClient(base_url="http://example.test", username="user", password="secret", session=http, load_env=False)
+
+    info = client.set_session_archived("ses_example", archived_ms=0)
+
+    assert info["time"]["archived"] == 0
+    method, url, kwargs = http.calls[0]
+    assert (method, url) == ("PATCH", "http://example.test/session/ses_example")
+    assert kwargs["json"] == {"time": {"archived": 0}}
+    assert kwargs["headers"]["Authorization"].startswith("Basic ")
+
+
+def test_set_session_archived_falls_back_to_get_readback_on_empty_body() -> None:
+    http = FakeHTTPSession()
+    http.queue(FakeResponse(status_code=200, payload=None, text=""))
+    http.queue(FakeResponse(payload={"id": "ses_example", "time": {"archived": 1790000000000}}, text="{}"))
+    client = OpenCodeClient(base_url="http://example.test", username="user", password="secret", session=http, load_env=False)
+
+    info = client.set_session_archived("ses_example", archived_ms=1790000000000)
+
+    assert info["time"]["archived"] == 1790000000000
+    assert [call[0] for call in http.calls] == ["PATCH", "GET"]
 
 
 def test_cli_model_provider_does_not_mix_env_provider_with_cli_model(monkeypatch: pytest.MonkeyPatch) -> None:

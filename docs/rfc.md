@@ -72,6 +72,7 @@ The public client talks to the OpenCode server with Basic auth and a small endpo
 - `POST /session/{id}/prompt_async` to hand a prompt off fire-and-forget (returns `204 No Content` on acceptance)
 - `POST /session/{id}/message` to send a prompt and block for the response; used by `--wait` and by dry-run verification
 - `GET /session/{id}` to inspect session metadata
+- `PATCH /session/{id}` to flip the archived session flag (payload `time.archived`; `0` means unarchive on the current server build)
 - `GET /session/{id}/message` to inspect messages for smoke verification
 - `DELETE /session/{id}` to delete ephemeral sessions
 - `GET /provider` to help diagnose model/provider mismatches
@@ -114,6 +115,22 @@ The dry run intentionally performs a small network side effect because it is a c
 5. Wait for completion, require the latest assistant text to equal `OK`, and delete the dry-run session by default.
 
 This gives schedulers a preflight for credentials, target-session reachability, and model/agent routing without polluting the target session history. If a caller needs a true live append probe, it should use a clearly harmless real prompt and accept that it becomes part of the target session.
+
+## Session Archive / Unarchive Lifecycle
+
+`archive` and `unarchive` toggle the archived session flag over the server HTTP API so a session can be restored to the active list in a client without touching SQLite. This complements the database-level `apply` flow, which moves whole sessions between databases; the lifecycle flag is a per-session state change owned by the server.
+
+Transport: `PATCH /session/{id}` with payload `{"time": {"archived": <epoch_ms>}}`. The handler echoes the updated session info; when the echo body is empty, the command falls back to a `GET /session/{id}` readback.
+
+Semantics: the current server build accepts finite epoch-millisecond numbers in this field. JSON `null` is decoded to an absent field and silently skipped, so it cannot clear the flag. `unarchive` therefore sends `0`: non-null, so the handler processes it, and falsy, so clients treat the session as active. Accepted trade-off: server views that filter `time_archived IS NULL` still treat a zero-valued session as archived; the accepted success criterion is that the session appears in the client's project session list. If a server build later learns to clear the flag to NULL, `unarchive` can adopt it behind the same CLI surface.
+
+Verification: after the PATCH, the echoed session info must confirm the flip: for `unarchive` the echoed `time.archived` must be absent, null, or `0`; for `archive` it must be a strictly positive whole number. Booleans, floats, negative or non-numeric values, and responses that are not session info are evidence of nothing and fail verification, so a server build that silently ignores the PATCH reports a visible failure instead of a false success.
+
+Each attempted session reports a `status` instead of bare booleans: `verified` means the flip was applied and echo-confirmed; `dry_run` means no mutation happened and the current state is reported; `failed_pre_patch` means the failure happened before any PATCH request was sent; `failed_post_patch` means a PATCH request was sent and the server state is rejected-or-applied but unconfirmed, so callers must not assume nothing changed. Failures during the initial readback, the PATCH request itself, verification, or a GET readback are all classified this way, including transport errors.
+
+With multiple `--session-id` flags the commands process sessions in order and continue after per-session failures, including transport errors: every attempted session is reported with its `status` (and `error`), and the command exits non-zero when any session failed. Flips are reversible but not batch-atomic.
+
+Safety: both directions are reversible flag flips, so unlike `apply` and `vacuum-main` they need no plan/confirm gate and may run while the server is live. `append` behavior is unchanged; appending to an archived session remains allowed handoff behavior, and the lifecycle commands are an explicit, orthogonal step.
 
 ## Inferring The Current Session
 
@@ -221,6 +238,8 @@ python -m opencode_skill submit "Synthetic prompt"
 python -m opencode_skill submit --prompt-file prompt.md --wait
 python -m opencode_skill append --session-id ses_example --prompt-file followup.md --model example/default-model
 python -m opencode_skill append --session-id ses_example --prompt-file followup.md --dry-run --json
+python -m opencode_skill archive --session-id ses_example --json
+python -m opencode_skill unarchive --session-id ses_example --json
 python -m opencode_skill batch submit --template template.md --specs specs/ --output-root tmp/batch_runs --dry-run
 python -m opencode_skill batch qa --slugs alpha,beta --output-root tmp/batch_runs --group-size 2 --dry-run
 python -m opencode_skill stats --json

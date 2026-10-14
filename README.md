@@ -26,7 +26,7 @@ Submission uses `OPENCODE_BASE_URL`, `OPENCODE_USERNAME`, `OPENCODE_PASSWORD`, a
 
 Database maintenance defaults follow OpenCode's common local data layout under `~/.local/share/opencode/`. You can override them with CLI flags or environment variables documented in `.env.example`.
 
-The maintenance safety rule is simple: run `plan` first, inspect the counts, then run `apply --confirm` only when the selected sessions are exactly the ones you intend to archive. Mutation commands should run only when OpenCode is not writing to the source database.
+The maintenance safety rule is simple: run `plan` first, inspect the counts, then run `apply --confirm` only when the selected sessions are exactly the ones you intend to archive. SQLite-mutating commands (`apply`, `vacuum-main`) should run only when OpenCode is not writing to the source database; the HTTP lifecycle commands (`archive`/`unarchive`) are server-side flag flips and are safe while the server is live.
 
 ## Commands
 
@@ -51,6 +51,15 @@ Append to an existing session:
 ```
 
 Use `append` when the desired behavior is to bump or continue an existing OpenCode session instead of creating a new one. `append --dry-run` first verifies that the target session is reachable, then creates an ephemeral dry-run session and sends the built-in `OK` prompt there. This validates credentials and model/agent routing without adding test messages to the target session.
+
+Session lifecycle flags:
+
+```bash
+.venv/bin/python -m opencode_skill archive --session-id ses_example --json
+.venv/bin/python -m opencode_skill unarchive --session-id ses_example --json
+```
+
+`archive` and `unarchive` flip the server-side archived flag through `PATCH /session/{id}` and verify it from the echoed session info. `unarchive` sends `0` because the current server build treats a JSON `null` in `time.archived` as an absent field, so the flag cannot be cleared with null; the accepted success criterion is that the session shows up again in the client's project session list, while server views that filter `time_archived IS NULL` still treat a zero-valued session as archived. Both commands are reversible, dry-runnable, and safe to run while the server is live. Multiple `--session-id` flags are processed in order and continue after per-session failures, including transport errors; each attempted session reports a `status` (`verified`, `failed_pre_patch`, `failed_post_patch`, or `dry_run`), failing sessions record their `error`, and the command exits non-zero when any session failed. A `failed_post_patch` entry means a PATCH request was sent and the server state is unconfirmed, not that nothing changed.
 
 Batch submission and QA:
 

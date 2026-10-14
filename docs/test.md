@@ -6,9 +6,9 @@ Tests must not require a real OpenCode server or inspect a user's real OpenCode 
 
 ## Unit and Integration Coverage
 
-HTTP client tests cover Basic auth header construction, missing password handling, create-session parsing, send-message payloads, typed HTTP errors, same-source provider/model resolution (including slash-containing model ids, resolution idempotency, and literal model ids when an explicit provider is given), and wait polling with injected sleep.
+HTTP client tests cover Basic auth header construction, missing password handling, create-session parsing, send-message payloads, typed HTTP errors, same-source provider/model resolution (including slash-containing model ids, resolution idempotency, and literal model ids when an explicit provider is given), wait polling with injected sleep, and `set_session_archived` PATCH payloads with echo verification and a GET readback fallback on empty bodies.
 
-Single-job tests cover prompt-source validation, fire-and-forget handoff via `prompt_async` (acceptance returns `submitted`; failures before acceptance propagate), append-to-existing-session workflow, explicit wait behavior, default session preservation, optional deletion, explicit provider handling, dry-run prompt replacement, OK verification, and failure handling when the assistant response differs from `OK`.
+Single-job tests cover prompt-source validation, fire-and-forget handoff via `prompt_async` (acceptance returns `submitted`; failures before acceptance propagate), append-to-existing-session workflow, explicit wait behavior, default session preservation, optional deletion, explicit provider handling, dry-run prompt replacement, OK verification, failure handling when the assistant response differs from `OK`, and the session archive lifecycle: `unarchive` sending `0`, `archive` stamping a current epoch, dry-run without mutation, strict echo verification (booleans, floats, negatives, and non session-info payloads fail verification), per-session `status` reporting (`verified` / `failed_pre_patch` / `failed_post_patch` / `dry_run`) including transport-failure phase classification, and CLI batch continuation after per-session failures with a non-zero exit when any session fails.
 
 Batch tests cover spec discovery, template rendering with `{{VAR}}` and `${VAR}`, unresolved and bare-token validation, slug filters, smoke slug, template directory selection, the required `batch-` title prefix, QA grouping, QA-from-manifest, manifest structure, rate limiting with injected sleep, and failed-handoff recording with fake clients.
 
@@ -53,6 +53,7 @@ Manual validation should check:
 9. `apply --no-delete` copies and verifies without changing the source.
 10. Full `apply --confirm` deletes only after verification succeeds.
 11. `vacuum-main --confirm` runs only when the user has intentionally stopped writers and has enough free disk space.
+12. `unarchive --session-id` clears the archived flag (value `0`) and the session reappears in the client's project session list; `archive --dry-run` reports state without mutation, and a stale echo exits non-zero.
 
 ## Privacy Validation
 

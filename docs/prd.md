@@ -29,6 +29,9 @@ The tool should let a user or agent:
 11. Verify the copy before deleting anything from the source database.
 12. Query assistant-message token data across the primary database and archives.
 13. Keep export and analytics callers explicit about whether archived sessions are included.
+14. Toggle a session's archived flag through the server HTTP API with echo verification, without writing the SQLite database directly.
+
+`archive` and `unarchive` flip the server-side archived flag for one or more sessions through `PATCH /session/{id}` and verify the flip from the echoed session info. `archive` stamps the current time; `unarchive` sends `0` because the current server build treats JSON `null` as an absent field and cannot express clearing; the accepted success criterion is that the session shows up as active in the client's project session list. Each attempted session reports a `status` (`verified`, `failed_pre_patch`, `failed_post_patch`, or `dry_run`) so callers can distinguish "no PATCH attempted" from "PATCH sent and unconfirmed". Both are reversible, dry-runnable, and safe to run while the server is live; neither deletes data nor needs the database maintenance window. Multiple `--session-id` flags are processed in order and continue after per-session failures, including transport errors, recording each result and exiting non-zero when any session failed.
 
 ## Non-Goals
 

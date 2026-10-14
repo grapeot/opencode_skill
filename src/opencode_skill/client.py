@@ -25,6 +25,7 @@ class ResponseLike(Protocol):
 class SessionLike(Protocol):
     def get(self, url: str, **kwargs: Any) -> ResponseLike: ...
     def post(self, url: str, **kwargs: Any) -> ResponseLike: ...
+    def patch(self, url: str, **kwargs: Any) -> ResponseLike: ...
     def delete(self, url: str, **kwargs: Any) -> ResponseLike: ...
 
 
@@ -379,6 +380,32 @@ class OpenCodeClient:
         response = self._session.get(url, headers=self.headers, params=params or None, timeout=10)
         payload = _json_response("GET", url, response)
         return payload if isinstance(payload, dict) else {}
+
+    def set_session_archived(
+        self,
+        session_id: str,
+        *,
+        archived_ms: int,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
+        """Flip the archived session flag via PATCH /session/{id}.
+
+        The current server build only processes finite epoch-millisecond values
+        in ``time.archived``. JSON ``null`` is decoded as an absent field and
+        silently skipped, so ``unarchive`` is represented by ``0``: non-null
+        for the handler, falsy for clients. See docs/rfc.md for the trade-off.
+        """
+        url = f"{self.base_url}/session/{session_id}"
+        response = self._session.patch(
+            url,
+            json={"time": {"archived": archived_ms}},
+            headers=self.headers,
+            timeout=10 if timeout is None else timeout,
+        )
+        payload = _json_response("PATCH", url, response, allow_empty=True)
+        if isinstance(payload, dict) and isinstance(payload.get("time"), dict):
+            return payload
+        return self.get_session_info(session_id)
 
     def get_session_messages(self, session_id: str) -> list[dict[str, Any]]:
         url = f"{self.base_url}/session/{session_id}/message"

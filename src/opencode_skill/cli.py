@@ -8,10 +8,18 @@ import sqlite3
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from . import batch, export, migrate, query, selector, throughput
 from .client import ModelRefError, OpenCodeClient, OpenCodeError, cli_model_provider
-from .jobs import DryRunVerificationError, append_job, read_prompt, submit_dry_run, submit_job
+from .jobs import (
+    DryRunVerificationError,
+    append_job,
+    read_prompt,
+    session_archive_job,
+    submit_dry_run,
+    submit_job,
+)
 
 def _load_dotenv(path: Path) -> None:
     if not path.exists():
@@ -311,6 +319,58 @@ def cmd_append(args: argparse.Namespace) -> int:
     return 0
 
 
+def _archive_entry_dict(result: Any) -> dict[str, Any]:
+    return {
+        "session_id": result.session_id,
+        "mode": result.mode,
+        "previous_archived": result.previous_archived,
+        "archived": result.archived,
+        "status": result.status,
+        "error": result.error,
+    }
+
+
+def cmd_archive(args: argparse.Namespace) -> int:
+    unarchive = args.mode == "unarchive"
+    mode = "unarchive" if unarchive else "archive"
+    entries: list[dict[str, Any]] = []
+    try:
+        client = OpenCodeClient()
+    except (OpenCodeError, ValueError) as exc:
+        for session_id in args.session_ids:
+            entries.append(
+                {
+                    "session_id": session_id,
+                    "mode": mode,
+                    "previous_archived": None,
+                    "archived": None,
+                    "status": "failed_pre_patch",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+    else:
+        for session_id in args.session_ids:
+            result = session_archive_job(
+                client,
+                session_id=session_id,
+                unarchive=unarchive,
+                dry_run=args.dry_run,
+            )
+            entries.append(_archive_entry_dict(result))
+    if args.json_out:
+        print(json.dumps({"results": entries}, indent=2))
+    else:
+        for entry in entries:
+            print(f"session_id: {entry['session_id']}")
+            print(f"mode: {entry['mode']}")
+            print(f"previous_archived: {entry['previous_archived']}")
+            print(f"archived: {entry['archived']}")
+            print(f"status: {entry['status']}")
+            if entry.get("error"):
+                print(f"error: {entry['error']}")
+    return 0 if all(entry["status"] in {"verified", "dry_run"} for entry in entries) else 3
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     since_ms = _parse_cutoff_ms(args.since) if args.since else None
     try:
@@ -499,6 +559,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_append.add_argument("--wait-max-seconds", type=float, default=7200.0)
     p_append.add_argument("--json", dest="json_out", action="store_true")
     p_append.set_defaults(func=cmd_append)
+
+    p_arch = sub.add_parser("archive", help="stamp a session's archived flag over the server API")
+    p_arch.add_argument(
+        "--session-id",
+        dest="session_ids",
+        action="append",
+        required=True,
+        help="session id to archive; repeat the flag for several sessions",
+    )
+    p_arch.add_argument("--json", dest="json_out", action="store_true")
+    p_arch.add_argument("--dry-run", action="store_true", help="report the current archived state without mutation")
+    p_arch.set_defaults(func=cmd_archive, mode="archive")
+
+    p_unarch = sub.add_parser("unarchive", help="clear a session's archived flag over the server API")
+    p_unarch.add_argument(
+        "--session-id",
+        dest="session_ids",
+        action="append",
+        required=True,
+        help="session id to unarchive; repeat the flag for several sessions",
+    )
+    p_unarch.add_argument("--json", dest="json_out", action="store_true")
+    p_unarch.add_argument("--dry-run", action="store_true", help="report the current archived state without mutation")
+    p_unarch.set_defaults(func=cmd_archive, mode="unarchive")
 
     p_export = sub.add_parser(
         "export", help="export OpenCode sessions to markdown (one file per session)"
