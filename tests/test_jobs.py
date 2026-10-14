@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
 import pytest
+import requests
 
-from opencode_skill.jobs import DRY_RUN_PROMPT, DryRunVerificationError, append_job, read_prompt, submit_dry_run, submit_job
+from opencode_skill.jobs import (
+    DRY_RUN_PROMPT,
+    DryRunVerificationError,
+    append_job,
+    read_prompt,
+    session_archive_job,
+    submit_dry_run,
+    submit_job,
+)
 
 
 class FakeClient:
@@ -57,6 +67,149 @@ def test_submit_job_hands_off_by_default() -> None:
     assert result.status == "submitted"
     assert result.deleted is False
     assert [call[0] for call in client.calls] == ["create_session", "send_message_async"]
+
+
+class ArchiveFakeClient:
+    def __init__(self, state: dict[str, int] | None = None) -> None:
+        self.calls: list[tuple[str, Any, Any]] = []
+        self.state: dict[str, int] = dict(state or {})
+
+    def get_session_info(self, session_id: str) -> dict[str, Any]:
+        self.calls.append(("get_session_info", session_id, None))
+        if session_id not in self.state:
+            return {}
+        return {"id": session_id, "time": {"archived": self.state[session_id]}}
+
+    def set_session_archived(self, session_id: str, *, archived_ms: int) -> dict[str, Any]:
+        self.calls.append(("set_session_archived", session_id, archived_ms))
+        self.state[session_id] = archived_ms
+        return {"id": session_id, "time": {"archived": archived_ms}}
+
+
+def test_session_archive_job_unarchives_with_zero_and_verifies() -> None:
+    client = ArchiveFakeClient({"ses_one": 12})
+
+    result = session_archive_job(client, session_id="ses_one", unarchive=True)
+
+    assert result.mode == "unarchive"
+    assert result.previous_archived == 12
+    assert result.archived == 0
+    assert result.status == "verified"
+    assert [call[0] for call in client.calls] == ["get_session_info", "set_session_archived"]
+    assert client.calls[1][2] == 0
+
+
+def test_session_archive_job_stamps_current_time_on_archive() -> None:
+    client = ArchiveFakeClient()
+    before = int(time.time() * 1000)
+
+    result = session_archive_job(client, session_id="ses_two", unarchive=False)
+
+    assert result.mode == "archive"
+    assert result.previous_archived is None
+    assert result.archived is not None and result.archived >= before
+    assert result.status == "verified"
+
+
+def test_session_archive_job_dry_run_reports_state_and_mutates_nothing() -> None:
+    client = ArchiveFakeClient({"ses_three": 5})
+
+    result = session_archive_job(client, session_id="ses_three", unarchive=False, dry_run=True)
+
+    assert result.mode == "archive"
+    assert result.previous_archived == 5
+    assert result.archived is None
+    assert result.status == "dry_run"
+    assert [call[0] for call in client.calls] == ["get_session_info"]
+
+
+def test_session_archive_job_reports_failed_post_patch_when_echo_is_stale() -> None:
+    class StaleClient:
+        def get_session_info(self, _session_id):
+            return {"id": "ses_four", "time": {"archived": 7}}
+
+        def set_session_archived(self, _session_id, *, archived_ms):
+            return {"id": "ses_four", "time": {"archived": 7}}
+
+    result = session_archive_job(StaleClient(), session_id="ses_four", unarchive=True)
+
+    assert result.status == "failed_post_patch"
+    assert result.error
+
+
+def test_session_archive_job_reports_failed_post_patch_for_nonconfirming_echoes() -> None:
+    class EchoingClient:
+        def __init__(self, echo: Any) -> None:
+            self.echo = echo
+
+        def get_session_info(self, _session_id):
+            return {}
+
+        def set_session_archived(self, _session_id, *, archived_ms):
+            return self.echo
+
+    nonconfirming = [
+        {"time": {"archived": 7.5}},
+        {"time": {"archived": True}},
+        {"time": {"archived": -1}},
+        {"time": {"archived": "17"}},
+        {},
+    ]
+    for echo in nonconfirming:
+        unarchive_result = session_archive_job(EchoingClient(echo), session_id="ses_five", unarchive=True)
+        archive_result = session_archive_job(EchoingClient(echo), session_id="ses_five", unarchive=False)
+        assert unarchive_result.status == "failed_post_patch"
+        assert archive_result.status == "failed_post_patch"
+
+    missing_field = {"time": {"created": 1, "updated": 2}}
+    archive_result = session_archive_job(EchoingClient(missing_field), session_id="ses_five", unarchive=False)
+    unarchive_result = session_archive_job(EchoingClient(missing_field), session_id="ses_five", unarchive=True)
+    assert archive_result.status == "failed_post_patch"
+    assert unarchive_result.status == "verified"
+
+
+def test_session_archive_job_classifies_transport_failures_by_phase() -> None:
+    class PrePatchClient:
+        def get_session_info(self, _session_id):
+            raise requests.exceptions.ConnectionError("connection refused")
+
+        def set_session_archived(self, _session_id, *, archived_ms):
+            raise AssertionError("must not be called")
+
+    class PostPatchClient:
+        def __init__(self) -> None:
+            self.patches: list[tuple[str, int]] = []
+
+        def get_session_info(self, _session_id):
+            return {}
+
+        def set_session_archived(self, session_id, *, archived_ms):
+            self.patches.append((session_id, archived_ms))
+            raise requests.exceptions.ConnectionError("connection refused")
+
+    pre = session_archive_job(PrePatchClient(), session_id="ses_pre", unarchive=True)
+    post_client = PostPatchClient()
+    post = session_archive_job(post_client, session_id="ses_post", unarchive=True)
+
+    assert pre.status == "failed_pre_patch"
+    assert pre.previous_archived is None
+    assert post.status == "failed_post_patch"
+    assert post.previous_archived is None
+    assert len(post_client.patches) == 1
+
+
+def test_session_archive_job_accepts_absent_archived_field_for_unarchive() -> None:
+    class AbsentClient:
+        def get_session_info(self, _session_id):
+            return {}
+
+        def set_session_archived(self, _session_id, *, archived_ms):
+            return {"id": "ses_six", "time": {"created": 1, "updated": 2}}
+
+    result = session_archive_job(AbsentClient(), session_id="ses_six", unarchive=True)
+
+    assert result.status == "verified"
+    assert result.archived is None
 
 
 def test_submit_job_can_wait_for_completion() -> None:

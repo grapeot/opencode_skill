@@ -49,6 +49,22 @@ A convenience wrapper may also be available after installation:
 scripts/opencode-skill stats --json
 ```
 
+## Session Lifecycle Flag (HTTP)
+
+`archive` and `unarchive` toggle the server's archived session flag through `PATCH /session/{id}`; they never write SQLite. This is a different operation from `apply`, which moves whole sessions between databases.
+
+```bash
+.venv/bin/python -m opencode_skill archive --session-id ses_example --json
+.venv/bin/python -m opencode_skill unarchive --session-id ses_example --json
+```
+
+- `archive` stamps the current epoch-millisecond value; `unarchive` sends `0`.
+- Why not `null`: on the current server build, JSON `null` in `time.archived` is decoded as an absent field and silently skipped, so only `0` restores a session.
+- Known trade-off: server views that filter `time_archived IS NULL` treat a zero-valued session as archived; the accepted success criterion is visibility in the client's project session list.
+- Verification: the echo (or a GET readback) must confirm the flip, checked strictly (non session-info shapes, booleans, floats, and negatives fail); a silent no-op exits non-zero instead of reporting false success.
+- Status contract: each attempted session reports a `status` — `verified`, `failed_pre_patch` (no PATCH sent), `failed_post_patch` (PATCH sent, server state unconfirmed), or `dry_run`. Batch runs with multiple `--session-id` flags continue after per-session failures, including transport errors, and exit non-zero when any session failed.
+- Safety: reversible, safe while the server is live, and no plan/confirm gate. `append` can also target archived sessions; the lifecycle commands are an explicit, orthogonal step.
+
 ## Maintenance Workflow
 
 For any destructive maintenance request, use this sequence:

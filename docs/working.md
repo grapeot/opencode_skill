@@ -4,6 +4,11 @@ This public working log records project-level changes and validation results wit
 
 ## Changelog
 
+### 2026-10-14
+
+- Added `archive` and `unarchive` commands that flip the server-side archived session flag through `PATCH /session/{id}` with strict echo (or GET readback) verification. `unarchive` sends `0` because the current server build decodes JSON `null` in `time.archived` as an absent field, so the flag cannot be cleared with null; the accepted success criterion is visibility in the client's project session list, and views filtering `time_archived IS NULL` still treat zero-valued sessions as archived. Each attempted session reports a status (`verified` / `failed_pre_patch` / `failed_post_patch` / `dry_run`) so callers can tell "no PATCH attempted" from "PATCH sent and unconfirmed"; batch runs continue after per-session failures including transport errors and exit non-zero when any session failed. Both directions are dry-runnable, reversible, need no confirm gate, and are safe while the server is live; `append` behavior is unchanged.
+- Sanitized `.env.example` to synthetic-only values: the personal server-topology narrative and operational incident notes moved to the private workspace overlay, and the public example keeps generic placeholders only.
+
 ### 2026-10-07
 
 - Added `skills/skill_opencode_agent_to_agent.md`, envelope templates, and pure addressing helpers in `src/opencode_skill/peer.py` for peer messaging over the existing append endpoint. Session list, children, status, and bounded experimental reads accept only the query parameters the server schema already defines. Append payloads are unchanged.

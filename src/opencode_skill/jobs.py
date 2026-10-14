@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from .client import infer_provider
+import requests
+
+from .client import OpenCodeError, infer_provider
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,16 @@ OK
 
 class DryRunVerificationError(RuntimeError):
     """Raised when an OpenCode dry run does not produce the expected response."""
+
+
+@dataclass(frozen=True)
+class SessionArchiveResult:
+    session_id: str
+    mode: str
+    previous_archived: int | None
+    archived: int | None
+    status: str
+    error: str | None = None
 
 
 def read_prompt(
@@ -181,6 +194,106 @@ def _send_message_for_handoff(
         provider_id=provider_id,
         agent=agent,
         timeout=send_timeout,
+    )
+
+
+def _reported_archived(info: Any) -> int | None:
+    """Tolerant extraction for reporting only; invalid shapes report as None."""
+    if not isinstance(info, dict):
+        return None
+    time_info = info.get("time")
+    value = time_info.get("archived") if isinstance(time_info, dict) else None
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _archived_flip_is_verified(echo: Any, unarchive: bool) -> bool:
+    """Strict verification: only valid session-info shapes and values count.
+
+    Absent/null archived counts as unarchived; whole positive numbers count as
+    archived. Booleans, floats, negatives, non-numeric values, and non
+    session-info payloads are evidence of nothing and fail verification.
+    """
+    if not isinstance(echo, dict) or not isinstance(echo.get("time"), dict):
+        return False
+    value = echo["time"].get("archived")
+    if value is None:
+        return unarchive
+    if isinstance(value, bool) or not isinstance(value, int):
+        return False
+    return (value == 0) if unarchive else (value > 0)
+
+
+_SESSION_ARCHIVE_ERRORS: tuple[type[BaseException], ...] = (
+    OpenCodeError,
+    ValueError,
+    requests.exceptions.RequestException,
+)
+
+
+def session_archive_job(
+    client: Any,
+    *,
+    session_id: str,
+    unarchive: bool,
+    dry_run: bool = False,
+) -> SessionArchiveResult:
+    """Flip the archived flag of one session and report a strict status.
+
+    ``unarchive`` sends ``0`` (see docs/rfc.md for why JSON null cannot clear
+    the flag on the current server build). The echoed session info must
+    confirm the flip; anything it cannot confirm becomes a
+    ``failed_post_patch`` result, because a PATCH request was already sent.
+    The job never reports a success-looking status on failure.
+    """
+    mode = "unarchive" if unarchive else "archive"
+    try:
+        previous = _reported_archived(client.get_session_info(session_id))
+    except _SESSION_ARCHIVE_ERRORS as exc:
+        return SessionArchiveResult(
+            session_id=session_id,
+            mode=mode,
+            previous_archived=None,
+            archived=None,
+            status="failed_pre_patch",
+            error=f"{type(exc).__name__}: {exc}",
+        )
+    if dry_run:
+        return SessionArchiveResult(
+            session_id=session_id,
+            mode=mode,
+            previous_archived=previous,
+            archived=None,
+            status="dry_run",
+        )
+    target = 0 if unarchive else int(time.time() * 1000)
+    try:
+        echo = client.set_session_archived(session_id, archived_ms=target)
+    except _SESSION_ARCHIVE_ERRORS as exc:
+        return SessionArchiveResult(
+            session_id=session_id,
+            mode=mode,
+            previous_archived=previous,
+            archived=None,
+            status="failed_post_patch",
+            error=f"{type(exc).__name__}: {exc}",
+        )
+    if not _archived_flip_is_verified(echo, unarchive):
+        return SessionArchiveResult(
+            session_id=session_id,
+            mode=mode,
+            previous_archived=previous,
+            archived=_reported_archived(echo),
+            status="failed_post_patch",
+            error=f"{mode} verification failed: echo did not confirm the flip",
+        )
+    return SessionArchiveResult(
+        session_id=session_id,
+        mode=mode,
+        previous_archived=previous,
+        archived=_reported_archived(echo),
+        status="verified",
     )
 
 

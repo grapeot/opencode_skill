@@ -5,9 +5,10 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+import requests
 
 from opencode_skill import cli
-from opencode_skill.client import OpenCodeHTTPError
+from opencode_skill.client import OpenCodeError, OpenCodeHTTPError
 
 
 def test_parse_cutoff_days():
@@ -413,6 +414,157 @@ def test_cli_append_dry_run_verifies_target_and_uses_ephemeral_session(tmp_path,
     assert payload["target_session_id"] == "ses_existing"
     assert payload["status"] == "dry_run_ok_deleted"
     assert payload["verification"] == "assistant_replied_ok"
+
+
+class ArchiveStubClient:
+    def __init__(self, echo_archived: int | None) -> None:
+        self.echo_archived = echo_archived
+        self.patches: list[tuple[str, int]] = []
+
+    def get_session_info(self, session_id):
+        return {"id": session_id, "time": {"archived": 1790000000000}}
+
+    def set_session_archived(self, session_id, *, archived_ms):
+        self.patches.append((session_id, archived_ms))
+        return {"id": session_id, "time": {"archived": self.echo_archived}}
+
+
+def test_cli_archive_stamps_epoch_and_verifies(monkeypatch, capsys):
+    client = ArchiveStubClient(echo_archived=1790000000500)
+    monkeypatch.setattr(cli, "OpenCodeClient", lambda: client)
+
+    rc = cli.main(["archive", "--session-id", "ses_example"])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "mode: archive" in out
+    assert "archived: 1790000000500" in out
+    assert "status: verified" in out
+    assert client.patches[0][1] > 0
+
+
+def test_cli_unarchive_sends_zero_and_reports_json(monkeypatch, capsys):
+    client = ArchiveStubClient(echo_archived=0)
+    monkeypatch.setattr(cli, "OpenCodeClient", lambda: client)
+
+    rc = cli.main(["unarchive", "--session-id", "ses_example", "--json"])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"][0]["mode"] == "unarchive"
+    assert payload["results"][0]["archived"] == 0
+    assert payload["results"][0]["status"] == "verified"
+
+
+def test_cli_archive_dry_run_reports_state_without_mutation(monkeypatch, capsys):
+    client = ArchiveStubClient(echo_archived=1790000000000)
+    monkeypatch.setattr(cli, "OpenCodeClient", lambda: client)
+
+    rc = cli.main(["unarchive", "--session-id", "ses_example", "--dry-run"])
+
+    assert rc == 0
+    assert "status: dry_run" in capsys.readouterr().out
+    assert client.patches == []
+
+
+def test_cli_unarchive_returns_3_when_echo_stays_archived(monkeypatch, capsys):
+    client = ArchiveStubClient(echo_archived=1790000000000)
+    monkeypatch.setattr(cli, "OpenCodeClient", lambda: client)
+
+    rc = cli.main(["unarchive", "--session-id", "ses_example"])
+
+    assert rc == 3
+    assert "status: failed_post_patch" in capsys.readouterr().out
+
+
+def test_cli_archive_returns_3_on_negative_echo(monkeypatch):
+    client = ArchiveStubClient(echo_archived=-1)
+    monkeypatch.setattr(cli, "OpenCodeClient", lambda: client)
+
+    rc = cli.main(["archive", "--session-id", "ses_example"])
+
+    assert rc == 3
+
+
+def test_cli_archive_records_each_result_and_continues_after_failure(monkeypatch, capsys):
+    class MixedClient:
+        def __init__(self):
+            self.state: dict[str, int] = {}
+
+        def get_session_info(self, session_id):
+            if session_id == "ses_failing":
+                raise OpenCodeHTTPError(method="GET", url="http://example.test/session/ses_failing", status_code=404, body="not found")
+            return {"id": session_id, "time": {"archived": self.state.get(session_id)}}
+
+        def set_session_archived(self, session_id, *, archived_ms):
+            self.state[session_id] = archived_ms
+            return {"id": session_id, "time": {"archived": archived_ms}}
+
+    client = MixedClient()
+    monkeypatch.setattr(cli, "OpenCodeClient", lambda: client)
+
+    rc = cli.main([
+        "archive",
+        "--session-id", "ses_failing",
+        "--session-id", "ses_still_processed",
+        "--json",
+    ])
+
+    assert rc == 3
+    payload = json.loads(capsys.readouterr().out)
+    results = payload["results"]
+    assert [entry["session_id"] for entry in results] == ["ses_failing", "ses_still_processed"]
+    assert results[0]["status"] == "failed_pre_patch"
+    assert results[0]["error"]
+    assert results[1]["status"] == "verified"
+
+
+def test_cli_archive_returns_3_when_client_construction_fails(monkeypatch, capsys):
+    class BrokenClient:
+        def __init__(self):
+            raise OpenCodeError("no password")
+
+    monkeypatch.setattr(cli, "OpenCodeClient", BrokenClient)
+
+    rc = cli.main(["unarchive", "--session-id", "ses_example", "--json"])
+
+    assert rc == 3
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"][0]["status"] == "failed_pre_patch"
+    assert payload["results"][0]["error"]
+
+
+def test_cli_archive_continues_after_transport_failure(monkeypatch, capsys):
+    class TransportClient:
+        def __init__(self):
+            self.state: dict[str, int] = {}
+
+        def get_session_info(self, session_id):
+            if session_id == "ses_transport":
+                raise requests.exceptions.ConnectionError("connection refused")
+            return {"id": session_id, "time": {"archived": self.state.get(session_id)}}
+
+        def set_session_archived(self, session_id, *, archived_ms):
+            self.state[session_id] = archived_ms
+            return {"id": session_id, "time": {"archived": archived_ms}}
+
+    client = TransportClient()
+    monkeypatch.setattr(cli, "OpenCodeClient", lambda: client)
+
+    rc = cli.main([
+        "archive",
+        "--session-id", "ses_transport",
+        "--session-id", "ses_after",
+        "--json",
+    ])
+
+    assert rc == 3
+    payload = json.loads(capsys.readouterr().out)
+    results = payload["results"]
+    assert results[0]["status"] == "failed_pre_patch"
+    assert results[0]["error"]
+    assert results[1]["status"] == "verified"
+    assert "ses_after" in client.state
 
 
 def test_cli_submit_slash_model_ignores_env_provider(tmp_path, monkeypatch, capsys):
